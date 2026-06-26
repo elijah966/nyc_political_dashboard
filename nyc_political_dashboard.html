@@ -1,0 +1,1998 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>NYC Political Intelligence Dashboard</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+:root{
+  --bg:#0A1628;
+  --card:#111D35;
+  --card2:#162040;
+  --blue:#1E6FFF;
+  --gold:#FFB800;
+  --text:#E2E8F0;
+  --muted:#A0AEC0;
+  --border:#1E3050;
+  --progressive:#7C3AED;
+  --moderate:#64748B;
+  --conservative:#DC2626;
+  --header-h:64px;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;overflow:hidden;}
+/* ── HEADER ── */
+#header{
+  position:fixed;top:0;left:0;right:0;height:var(--header-h);
+  background:rgba(10,22,40,0.97);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:16px;padding:0 16px;z-index:1000;
+  backdrop-filter:blur(8px);
+}
+.header-brand{display:flex;align-items:center;gap:10px;flex-shrink:0;}
+.header-brand .logo{font-size:24px;line-height:1;}
+.brand-text h1{font-size:14px;font-weight:700;letter-spacing:.3px;white-space:nowrap;}
+.brand-text p{font-size:11px;color:var(--muted);white-space:nowrap;}
+.header-filters{display:flex;gap:4px;flex:1;justify-content:center;}
+.btn-borough{
+  background:transparent;border:1px solid var(--border);color:var(--muted);
+  padding:4px 10px;border-radius:20px;font-size:11px;cursor:pointer;
+  transition:all .2s;white-space:nowrap;
+}
+.btn-borough:hover{border-color:var(--blue);color:var(--text);}
+.btn-borough.active{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600;}
+.header-right{display:flex;align-items:center;gap:16px;flex-shrink:0;}
+.legend-wrap{display:flex;align-items:center;gap:8px;}
+.legend-label{font-size:10px;color:var(--muted);}
+.legend-bar{
+  width:120px;height:10px;border-radius:5px;
+  background:linear-gradient(to right,#6B21A8,#818CF8,#64748B,#F97316,#991B1B);
+}
+.status-pill{
+  display:flex;align-items:center;gap:6px;
+  background:var(--card2);border:1px solid var(--border);
+  border-radius:20px;padding:4px 10px;font-size:11px;
+}
+.status-dot{width:7px;height:7px;border-radius:50%;background:#6B7280;transition:background .4s;}
+.status-dot.live{background:#22C55E;box-shadow:0 0 6px #22C55E88;}
+.status-dot.demo{background:#FFB800;box-shadow:0 0 6px #FFB80088;}
+
+/* ── LAYOUT ── */
+#main{
+  position:fixed;top:var(--header-h);left:0;right:0;bottom:0;
+  display:flex;
+}
+#map-container{flex:1;position:relative;min-width:0;}
+#map{width:100%;height:100%;}
+.leaflet-container{background:#0A1628!important;}
+
+/* ── RIGHT PANEL ── */
+#panel{
+  width:0;overflow:hidden;
+  background:var(--card);border-left:1px solid var(--border);
+  display:flex;flex-direction:column;
+  transition:width .35s cubic-bezier(.4,0,.2,1);
+  position:relative;z-index:500;flex-shrink:0;
+}
+#panel.open{width:380px;}
+.panel-header{
+  padding:16px 16px 0;
+  display:flex;flex-direction:column;gap:4px;
+  border-bottom:1px solid var(--border);padding-bottom:12px;
+  flex-shrink:0;position:relative;
+}
+.panel-close{
+  position:absolute;top:12px;right:12px;
+  background:transparent;border:none;color:var(--muted);
+  cursor:pointer;font-size:18px;padding:4px;border-radius:6px;
+  transition:color .2s;
+}
+.panel-close:hover{color:var(--text);}
+#panel-name{font-size:18px;font-weight:700;padding-right:28px;}
+.panel-meta{display:flex;align-items:center;gap:8px;margin-top:4px;}
+#panel-borough{
+  font-size:11px;padding:2px 8px;border-radius:12px;
+  background:rgba(30,111,255,.15);color:var(--blue);border:1px solid rgba(30,111,255,.3);
+}
+#panel-pes-badge{
+  font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px;
+}
+/* ── TABS ── */
+.tab-bar{
+  display:flex;border-bottom:1px solid var(--border);
+  flex-shrink:0;
+}
+.tab-btn{
+  flex:1;padding:10px 4px;font-size:12px;font-weight:600;
+  background:transparent;border:none;color:var(--muted);cursor:pointer;
+  border-bottom:2px solid transparent;transition:all .2s;
+}
+.tab-btn.active{color:var(--blue);border-bottom-color:var(--blue);}
+.tab-btn:hover:not(.active){color:var(--text);}
+.tab-content{display:none;flex-direction:column;gap:12px;padding:16px;overflow-y:auto;flex:1;}
+.tab-content.active{display:flex;}
+
+/* ── CARDS ── */
+.stat-card{
+  background:var(--card2);border:1px solid var(--border);
+  border-radius:10px;padding:12px 14px;
+}
+.stat-card .label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;}
+.stat-card .value{font-size:22px;font-weight:700;}
+.stat-card .sub{font-size:11px;color:var(--muted);margin-top:2px;}
+.stat-row{display:flex;gap:8px;}
+.stat-row .stat-card{flex:1;}
+.section-title{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;}
+
+/* ── GAUGE ── */
+#gauge-wrap{display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 0;}
+.gauge-svg-wrap{width:220px;max-width:100%;}
+.lean-label{font-size:13px;font-weight:700;letter-spacing:.5px;}
+.lean-bar{
+  width:180px;height:6px;border-radius:3px;margin-top:4px;
+  background:linear-gradient(to right,#6B21A8,#818CF8,#64748B,#F97316,#991B1B);
+  position:relative;
+}
+.lean-marker{
+  position:absolute;top:-3px;width:12px;height:12px;
+  border-radius:50%;background:#fff;border:2px solid;
+  transform:translateX(-50%);transition:left .5s ease;
+}
+
+/* ── DONUT CHART ── */
+.donut-wrap{position:relative;width:180px;height:180px;margin:0 auto;}
+.donut-legend{display:flex;flex-direction:column;gap:6px;margin-top:8px;}
+.donut-legend-item{display:flex;align-items:center;gap:8px;font-size:12px;}
+.donut-legend-dot{width:10px;height:10px;border-radius:2px;flex-shrink:0;}
+
+/* ── BAR CHART ── */
+.bar-chart-wrap{display:flex;flex-direction:column;gap:8px;}
+.bar-row{display:flex;align-items:center;gap:8px;}
+.bar-row .bar-label{font-size:11px;width:130px;flex-shrink:0;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.bar-row .bar-track{flex:1;height:16px;background:var(--border);border-radius:4px;overflow:hidden;}
+.bar-row .bar-fill{height:100%;border-radius:4px;transition:width .6s ease;display:flex;align-items:center;padding-left:6px;}
+.bar-row .bar-pct{font-size:10px;color:#fff;font-weight:700;}
+.bar-row .bar-num{font-size:11px;color:var(--muted);width:36px;text-align:right;flex-shrink:0;}
+
+/* ── 311 LIST ── */
+.complaint-list{display:flex;flex-direction:column;gap:6px;}
+.complaint-item{
+  display:flex;align-items:center;gap:10px;
+  background:var(--card2);border-radius:8px;padding:8px 10px;
+  border:1px solid var(--border);
+}
+.complaint-rank{
+  font-size:12px;font-weight:700;color:var(--muted);width:18px;text-align:center;flex-shrink:0;
+}
+.complaint-icon{font-size:16px;width:22px;text-align:center;flex-shrink:0;}
+.complaint-info{flex:1;min-width:0;}
+.complaint-type{font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.complaint-count{font-size:11px;color:var(--muted);}
+.complaint-bar-mini{height:3px;background:var(--border);border-radius:2px;margin-top:3px;overflow:hidden;}
+.complaint-bar-fill{height:100%;background:var(--blue);border-radius:2px;}
+
+/* ── CONCERN INDEX ── */
+.concern-list{display:flex;flex-direction:column;gap:8px;}
+.concern-item{
+  background:var(--card2);border:1px solid var(--border);
+  border-radius:8px;padding:10px 12px;
+}
+.concern-item.top{border-color:rgba(255,184,0,.4);background:rgba(255,184,0,.06);}
+.concern-header{display:flex;justify-content:space-between;align-items:center;}
+.concern-topic{font-size:13px;font-weight:600;}
+.concern-score{font-size:12px;font-weight:700;color:var(--gold);}
+.concern-bar-wrap{height:4px;background:var(--border);border-radius:2px;margin-top:6px;overflow:hidden;}
+.concern-bar-fill{height:100%;border-radius:2px;background:linear-gradient(to right,var(--blue),var(--gold));}
+.active-badge{
+  display:inline-flex;align-items:center;gap:5px;
+  background:rgba(255,184,0,.15);border:1px solid rgba(255,184,0,.4);
+  color:var(--gold);font-size:10px;font-weight:700;
+  padding:2px 8px;border-radius:12px;margin-top:4px;
+}
+.penetration-card{
+  background:linear-gradient(135deg,rgba(30,111,255,.12),rgba(30,111,255,.04));
+  border:1px solid rgba(30,111,255,.3);
+  border-radius:10px;padding:12px 14px;
+  display:flex;justify-content:space-between;align-items:center;
+}
+.penetration-val{font-size:26px;font-weight:800;color:var(--blue);}
+.penetration-label{font-size:11px;color:var(--muted);margin-top:2px;}
+
+/* ── MAP TOOLTIP ── */
+.map-tooltip{
+  background:rgba(10,22,40,0.95)!important;
+  border:1px solid var(--border)!important;
+  border-radius:8px!important;color:var(--text)!important;
+  font-family:system-ui,sans-serif!important;
+  box-shadow:0 4px 20px rgba(0,0,0,.5)!important;
+  padding:0!important;
+}
+.tooltip-inner{padding:10px 12px;}
+.tooltip-name{font-size:13px;font-weight:700;margin-bottom:4px;}
+.tooltip-pes{font-size:20px;font-weight:800;}
+.tooltip-meta{font-size:11px;color:var(--muted);margin-top:2px;}
+.tooltip-pills{display:flex;gap:4px;margin-top:6px;}
+.tooltip-pill{
+  font-size:10px;padding:2px 6px;border-radius:10px;font-weight:600;
+}
+
+/* ── LOADING OVERLAY ── */
+#loading-overlay{
+  position:fixed;inset:0;background:var(--bg);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  z-index:9999;gap:16px;transition:opacity .5s;
+}
+.loader-logo{font-size:48px;animation:pulse 1.5s ease-in-out infinite;}
+@keyframes pulse{0%,100%{transform:scale(1);}50%{transform:scale(1.1);}}
+.loader-text{font-size:16px;font-weight:600;}
+.loader-sub{font-size:13px;color:var(--muted);}
+.progress-bar{width:200px;height:3px;background:var(--border);border-radius:2px;overflow:hidden;}
+.progress-fill{height:100%;background:var(--blue);border-radius:2px;animation:progress 2s ease forwards;}
+@keyframes progress{from{width:0%;}to{width:100%;}}
+
+/* ── NO-HOVER HINT ── */
+#map-hint{
+  position:absolute;bottom:20px;left:50%;transform:translateX(-50%);
+  background:rgba(10,22,40,.85);border:1px solid var(--border);
+  border-radius:20px;padding:6px 14px;font-size:12px;color:var(--muted);
+  z-index:800;pointer-events:none;
+  transition:opacity .5s;
+}
+#map-hint.hidden{opacity:0;}
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar{width:6px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+
+/* ── UPLOAD BUTTON ── */
+.upload-btn{
+  background:var(--gold);color:#0A1628;border:none;
+  padding:5px 12px;border-radius:20px;font-size:11px;font-weight:800;
+  cursor:pointer;transition:all .2s;white-space:nowrap;letter-spacing:.3px;
+}
+.upload-btn:hover{background:#E6A600;transform:translateY(-1px);}
+
+/* ── MODAL ── */
+.modal-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.75);
+  z-index:3000;display:flex;align-items:center;justify-content:center;
+  opacity:0;pointer-events:none;transition:opacity .3s;
+}
+.modal-overlay.open{opacity:1;pointer-events:all;}
+.modal-box{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:16px;width:640px;max-width:96vw;max-height:88vh;
+  display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,.6);
+  transform:translateY(16px);transition:transform .3s;
+}
+.modal-overlay.open .modal-box{transform:translateY(0);}
+.modal-hd{
+  padding:16px 20px;border-bottom:1px solid var(--border);
+  display:flex;justify-content:space-between;align-items:center;flex-shrink:0;
+}
+.modal-hd h2{font-size:16px;font-weight:700;}
+.modal-hd .modal-steps{display:flex;gap:4px;align-items:center;}
+.modal-step-dot{
+  width:8px;height:8px;border-radius:50%;background:var(--border);transition:background .3s;
+}
+.modal-step-dot.active{background:var(--blue);}
+.modal-step-dot.done{background:#22C55E;}
+.modal-close-x{background:none;border:none;color:var(--muted);cursor:pointer;font-size:20px;padding:4px 8px;border-radius:6px;transition:color .2s;}
+.modal-close-x:hover{color:var(--text);}
+.modal-body{padding:20px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:16px;}
+.modal-ft{padding:12px 20px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;}
+.modal-ft-right{display:flex;gap:8px;}
+/* Step visibility */
+.modal-step{display:none;flex-direction:column;gap:14px;}
+.modal-step.active{display:flex;}
+/* Drop zone */
+.drop-zone{
+  border:2px dashed var(--border);border-radius:12px;
+  padding:28px;text-align:center;cursor:pointer;
+  transition:border-color .25s,background .25s;position:relative;
+}
+.drop-zone.drag-over{border-color:var(--blue);background:rgba(30,111,255,.06);}
+.drop-zone.has-file{border-color:#22C55E;background:rgba(34,197,94,.05);}
+.dz-icon{font-size:32px;margin-bottom:8px;}
+.dz-text{font-size:14px;font-weight:600;}
+.dz-sub{font-size:12px;color:var(--muted);margin-top:4px;}
+.dz-sub label{color:var(--blue);cursor:pointer;text-decoration:underline;}
+.dz-filename{font-size:13px;font-weight:700;color:#22C55E;margin-top:8px;}
+/* Form sections */
+.form-section{display:flex;flex-direction:column;gap:6px;}
+.form-lbl{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;}
+.lean-opts{display:flex;gap:6px;}
+.lean-opt{
+  flex:1;padding:9px 4px;font-size:12px;font-weight:600;
+  border:1px solid var(--border);border-radius:8px;
+  background:transparent;color:var(--muted);cursor:pointer;transition:all .2s;
+}
+.lean-opt:hover{border-color:var(--blue);color:var(--text);}
+.lean-opt.sel[data-lean="dsa"]{background:rgba(124,58,237,.18);border-color:#7C3AED;color:#A78BFA;}
+.lean-opt.sel[data-lean="liberal"]{background:rgba(59,130,246,.18);border-color:#3B82F6;color:#93C5FD;}
+.lean-opt.sel[data-lean="conservative"]{background:rgba(220,38,38,.18);border-color:#DC2626;color:#FCA5A5;}
+.issue-sel,.issue-txt{
+  width:100%;padding:9px 12px;background:var(--card2);
+  border:1px solid var(--border);border-radius:8px;
+  color:var(--text);font-size:13px;font-family:inherit;
+}
+.issue-sel{margin-bottom:4px;}
+.issue-txt{display:none;}
+.issue-txt::placeholder{color:var(--muted);}
+.issue-sel option{background:var(--card);}
+/* Preview step */
+.preview-stats-row{display:flex;gap:10px;flex-wrap:wrap;}
+.pstat{background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:8px 14px;min-width:100px;}
+.pstat .pval{font-size:22px;font-weight:800;}
+.pstat .plbl{font-size:10px;color:var(--muted);margin-top:1px;}
+.ptable-wrap{border:1px solid var(--border);border-radius:8px;overflow:hidden;max-height:240px;overflow-y:auto;}
+.ptable{width:100%;border-collapse:collapse;font-size:11px;}
+.ptable th{background:var(--card2);padding:7px 10px;text-align:left;color:var(--muted);font-weight:700;position:sticky;top:0;}
+.ptable td{padding:6px 10px;border-bottom:1px solid rgba(30,48,80,.5);}
+.ptable tr:last-child td{border:none;}
+.row-ok .status-cell{color:#22C55E;}
+.row-partial .status-cell{color:#FFB800;}
+.row-skip .status-cell{color:#6B7280;}
+/* Progress step */
+.upload-progress-wrap{display:flex;flex-direction:column;align-items:center;gap:14px;padding:24px 0;}
+.progress-ring{font-size:48px;}
+.progress-track{width:100%;height:8px;background:var(--border);border-radius:4px;overflow:hidden;}
+.progress-fill-anim{height:100%;background:linear-gradient(to right,var(--blue),var(--gold));border-radius:4px;transition:width .4s ease;}
+.upload-msg{font-size:13px;color:var(--muted);text-align:center;}
+/* Buttons */
+.btn-pri{
+  background:var(--blue);color:#fff;border:none;padding:9px 18px;
+  border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:background .2s;
+}
+.btn-pri:hover{background:#1A5FE0;}
+.btn-pri:disabled{background:var(--border);color:var(--muted);cursor:not-allowed;}
+.btn-sec{
+  background:transparent;color:var(--muted);border:1px solid var(--border);
+  padding:9px 18px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:all .2s;
+}
+.btn-sec:hover{color:var(--text);border-color:var(--muted);}
+.success-banner{
+  background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.4);
+  border-radius:10px;padding:12px 16px;text-align:center;
+}
+.success-banner .sb-num{font-size:32px;font-weight:800;color:#22C55E;}
+.success-banner .sb-lbl{font-size:12px;color:var(--muted);margin-top:2px;}
+</style>
+</head>
+<body>
+
+<!-- Loading overlay -->
+<div id="loading-overlay">
+  <div class="loader-logo">🗽</div>
+  <div class="loader-text">NYC Political Intelligence</div>
+  <div class="loader-sub" id="loader-sub">Connecting to data sources...</div>
+  <div class="progress-bar"><div class="progress-fill"></div></div>
+</div>
+
+<!-- Header -->
+<header id="header">
+  <div class="header-brand">
+    <div class="logo">🗽</div>
+    <div class="brand-text">
+      <h1>NYC Political Intelligence Dashboard</h1>
+      <p>Real-time neighborhood analytics · Field Operations Command</p>
+    </div>
+  </div>
+
+  <div class="header-filters">
+    <button class="btn-borough active" data-borough="all">All Boroughs</button>
+    <button class="btn-borough" data-borough="Brooklyn">Brooklyn</button>
+    <button class="btn-borough" data-borough="Queens">Queens</button>
+    <button class="btn-borough" data-borough="Manhattan">Manhattan</button>
+    <button class="btn-borough" data-borough="Bronx">Bronx</button>
+    <button class="btn-borough" data-borough="Staten Island">S. Island</button>
+  </div>
+
+  <button class="upload-btn" id="upload-btn">⬆ Upload Signatures</button>
+
+  <div class="header-right">
+    <div class="legend-wrap">
+      <span class="legend-label" style="color:#818CF8">Progressive</span>
+      <div class="legend-bar"></div>
+      <span class="legend-label" style="color:#F97316">Conservative</span>
+    </div>
+    <div class="status-pill">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="statusText">Initializing</span>
+    </div>
+  </div>
+</header>
+
+<!-- Main -->
+<div id="main">
+  <div id="map-container">
+    <div id="map"></div>
+    <div id="map-hint">Click a neighborhood to explore its political profile</div>
+  </div>
+
+  <!-- Right Panel -->
+  <div id="panel">
+    <div class="panel-header">
+      <div id="panel-name">Select a Neighborhood</div>
+      <div class="panel-meta">
+        <span id="panel-borough"></span>
+        <span id="panel-pes-badge"></span>
+      </div>
+      <button class="panel-close" id="panel-close-btn">✕</button>
+    </div>
+
+    <div class="tab-bar">
+      <button class="tab-btn active" data-tab="profile">Political Profile</button>
+      <button class="tab-btn" data-tab="issues">Key Issues</button>
+      <button class="tab-btn" data-tab="pulse">Community Pulse</button>
+    </div>
+
+    <!-- Tab: Political Profile -->
+    <div class="tab-content active" id="tab-profile">
+      <div id="gauge-wrap">
+        <div class="gauge-svg-wrap">
+          <svg id="gauge-svg" viewBox="0 0 220 130" xmlns="http://www.w3.org/2000/svg"></svg>
+        </div>
+        <div class="lean-label" id="lean-label"></div>
+        <div class="lean-bar">
+          <div class="lean-marker" id="lean-marker"></div>
+        </div>
+      </div>
+
+      <div class="stat-row">
+        <div class="stat-card">
+          <div class="label">PES Score</div>
+          <div class="value" id="stat-pes"></div>
+          <div class="sub">-100 = DSA · +100 = GOP</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Engagement Rate</div>
+          <div class="value" id="stat-er"></div>
+          <div class="sub">petitions per 1,000 residents</div>
+        </div>
+      </div>
+
+      <div class="section-title">Petition Breakdown</div>
+      <div style="position:relative;width:180px;height:180px;margin:0 auto;">
+        <canvas id="donut-chart"></canvas>
+        <div id="donut-center" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;">
+          <div id="donut-total" style="font-size:22px;font-weight:800;"></div>
+          <div style="font-size:10px;color:var(--muted);">total petitions</div>
+        </div>
+      </div>
+      <div class="donut-legend" id="donut-legend"></div>
+    </div>
+
+    <!-- Tab: Key Issues -->
+    <div class="tab-content" id="tab-issues">
+      <div class="section-title">What residents are signing about</div>
+      <div class="bar-chart-wrap" id="issues-bar"></div>
+      <div class="penetration-card">
+        <div>
+          <div class="penetration-val" id="penetration-val"></div>
+          <div class="penetration-label">Community Penetration Rate</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px;">% of residents who signed a petition</div>
+        </div>
+        <div style="font-size:32px;">📋</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">YTD Petition Volume</div>
+        <div class="value" id="ytd-volume"></div>
+        <div class="sub" id="ytd-sub"></div>
+      </div>
+    </div>
+
+    <!-- Tab: Community Pulse -->
+    <div class="tab-content" id="tab-pulse">
+      <div class="section-title">311 Top Complaints</div>
+      <div class="complaint-list" id="complaint-list"></div>
+
+      <div class="section-title" style="margin-top:4px;">Community Concern Index</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">Recency-weighted political topic frequency</div>
+      <div class="concern-list" id="concern-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── UPLOAD MODAL ── -->
+<div class="modal-overlay" id="upload-modal">
+  <div class="modal-box">
+    <div class="modal-hd">
+      <h2>⬆ Upload Petition Signatures</h2>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div class="modal-steps">
+          <div class="modal-step-dot active" id="sd1"></div>
+          <div style="width:20px;height:1px;background:var(--border)"></div>
+          <div class="modal-step-dot" id="sd2"></div>
+          <div style="width:20px;height:1px;background:var(--border)"></div>
+          <div class="modal-step-dot" id="sd3"></div>
+        </div>
+        <button class="modal-close-x" id="modal-close">✕</button>
+      </div>
+    </div>
+
+    <div class="modal-body">
+      <!-- STEP 1: File + metadata -->
+      <div class="modal-step active" id="mstep-1">
+        <div class="drop-zone" id="drop-zone">
+          <div class="dz-icon">📋</div>
+          <div class="dz-text">Drop your CSV or Excel file here</div>
+          <div class="dz-sub">or <label for="file-input">browse files</label> · .csv, .xlsx, .xls accepted</div>
+          <input type="file" id="file-input" accept=".csv,.xlsx,.xls" style="display:none">
+          <div class="dz-filename" id="dz-filename" style="display:none"></div>
+        </div>
+
+        <div class="form-section">
+          <div class="form-lbl">Political Lean of this Petition</div>
+          <div class="lean-opts">
+            <button class="lean-opt" data-lean="dsa">🟣 DSA / Progressive</button>
+            <button class="lean-opt" data-lean="liberal">🔵 Liberal / Democrat</button>
+            <button class="lean-opt" data-lean="conservative">🔴 Conservative / Republican</button>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <div class="form-lbl">Issue Category</div>
+          <select class="issue-sel" id="issue-sel">
+            <option value="">— Select an issue —</option>
+            <option>Housing Justice</option>
+            <option>Police Reform</option>
+            <option>Police Accountability</option>
+            <option>Education Equity</option>
+            <option>Healthcare Access</option>
+            <option>Climate Action</option>
+            <option>Environmental Justice</option>
+            <option>Immigration Reform</option>
+            <option>Workers Rights</option>
+            <option>Economic Justice</option>
+            <option>Public Safety</option>
+            <option>Small Business</option>
+            <option>Affordable Housing</option>
+            <option>Rent Stabilization</option>
+            <option>Anti-Displacement</option>
+            <option>Transportation</option>
+            <option>Infrastructure</option>
+            <option>Tax Relief</option>
+            <option>Religious Freedom</option>
+            <option>Anti-Congestion Pricing</option>
+            <option value="__custom__">✏️ Custom issue...</option>
+          </select>
+          <input type="text" class="issue-txt" id="issue-txt" placeholder="Type your issue category...">
+        </div>
+      </div>
+
+      <!-- STEP 2: Preview -->
+      <div class="modal-step" id="mstep-2">
+        <div class="preview-stats-row" id="preview-stats"></div>
+        <div class="ptable-wrap">
+          <table class="ptable">
+            <thead><tr>
+              <th>#</th><th>Name</th><th>Neighborhood</th><th>Borough</th><th>Status</th>
+            </tr></thead>
+            <tbody id="preview-tbody"></tbody>
+          </table>
+        </div>
+        <div style="font-size:11px;color:var(--muted);">
+          🟢 Neighborhood identified · 🟡 Borough only (no zip) · ⚫ Skipped (blank row)
+        </div>
+      </div>
+
+      <!-- STEP 3: Upload progress / result -->
+      <div class="modal-step" id="mstep-3">
+        <div class="upload-progress-wrap" id="upload-progress-wrap">
+          <div class="progress-ring" id="progress-ring">⬆️</div>
+          <div class="progress-track" style="width:100%;">
+            <div class="progress-fill-anim" id="progress-fill" style="width:0%"></div>
+          </div>
+          <div class="upload-msg" id="upload-msg">Preparing records...</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-ft">
+      <div style="font-size:11px;color:var(--muted);" id="modal-hint">Select a file, lean, and issue to continue</div>
+      <div class="modal-ft-right">
+        <button class="btn-sec" id="modal-back" style="display:none">← Back</button>
+        <button class="btn-sec" id="modal-cancel">Cancel</button>
+        <button class="btn-pri" id="modal-next" disabled>Preview →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════
+// CONFIG
+// ═══════════════════════════════════════════════════════════════════
+const CONFIG = {
+  supabaseUrl: "https://lbgwgykbcllugcwquuxc.supabase.co",
+  supabaseKey: "sb_publishable_akv9XhCAiXdLhmt1rcK50w_lvj5fv56",
+  geoJsonUrl: "https://data.cityofnewyork.us/api/geospatial/cpf4-rkhq?method=export&type=GeoJSON",
+  api311: "https://data.cityofnewyork.us/resource/erm2-nwe9.json"
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// MOCK DATA — 25 NYC Neighborhoods
+// ═══════════════════════════════════════════════════════════════════
+const MOCK_DATA = [
+  // ── BROOKLYN ──
+  {
+    name:"Crown Heights", borough:"Brooklyn", pes:-72, population:95000,
+    totalPetitions:1240, dsa:680, liberal:420, conservative:140,
+    issues:[
+      {name:"Housing Justice",pct:38},{name:"Police Reform",pct:28},
+      {name:"Education Equity",pct:18},{name:"Healthcare Access",pct:10},{name:"Climate Action",pct:6}
+    ],
+    pulse311:[
+      {type:"Heat/Hot Water",icon:"🔥",count:2340},{type:"Noise - Residential",icon:"🔊",count:1890},
+      {type:"Illegal Parking",icon:"🚗",count:1560},{type:"Street Light",icon:"💡",count:980},{type:"Rodent",icon:"🐀",count:870}
+    ],
+    topTopics:[{topic:"Housing Justice",score:94.2},{topic:"Police Reform",score:71.8},{topic:"Rent Stabilization",score:58.4}],
+    centroid:[40.6692,-73.9442], mostActiveIssue:"Housing Justice", penetration:1.31
+  },
+  {
+    name:"Bay Ridge", borough:"Brooklyn", pes:58, population:78000,
+    totalPetitions:640, dsa:60, liberal:250, conservative:330,
+    issues:[
+      {name:"Public Safety",pct:34},{name:"Small Business",pct:26},
+      {name:"Infrastructure",pct:20},{name:"Zoning",pct:12},{name:"Tax Relief",pct:8}
+    ],
+    pulse311:[
+      {type:"Illegal Parking",icon:"🚗",count:3120},{type:"Noise - Residential",icon:"🔊",count:1450},
+      {type:"Blocked Driveway",icon:"🚧",count:1230},{type:"Street Condition",icon:"🛣️",count:890},{type:"Sanitation",icon:"🗑️",count:740}
+    ],
+    topTopics:[{topic:"Public Safety",score:82.1},{topic:"Small Business Relief",score:61.4},{topic:"Anti-Congestion Pricing",score:54.8}],
+    centroid:[40.6349,-74.0186], mostActiveIssue:"Public Safety", penetration:0.82
+  },
+  {
+    name:"Park Slope", borough:"Brooklyn", pes:-45, population:110000,
+    totalPetitions:1580, dsa:560, liberal:810, conservative:210,
+    issues:[
+      {name:"Environment",pct:32},{name:"Education",pct:25},
+      {name:"Housing",pct:22},{name:"Transportation",pct:14},{name:"Parks",pct:7}
+    ],
+    pulse311:[
+      {type:"Noise - Residential",icon:"🔊",count:2180},{type:"Illegal Parking",icon:"🚗",count:1870},
+      {type:"Street Condition",icon:"🛣️",count:1120},{type:"Blocked Driveway",icon:"🚧",count:980},{type:"Graffiti",icon:"🎨",count:760}
+    ],
+    topTopics:[{topic:"Climate Action",score:88.6},{topic:"School Equity",score:76.2},{topic:"Bike Infrastructure",score:67.9}],
+    centroid:[40.6681,-73.9797], mostActiveIssue:"Climate Action", penetration:1.44
+  },
+  {
+    name:"Bedford-Stuyvesant", borough:"Brooklyn", pes:-75, population:142000,
+    totalPetitions:1960, dsa:1120, liberal:640, conservative:200,
+    issues:[
+      {name:"Housing Justice",pct:40},{name:"Police Accountability",pct:30},
+      {name:"Economic Justice",pct:16},{name:"Education",pct:9},{name:"Health Equity",pct:5}
+    ],
+    pulse311:[
+      {type:"Heat/Hot Water",icon:"🔥",count:3890},{type:"Noise - Residential",icon:"🔊",count:2670},
+      {type:"Illegal Parking",icon:"🚗",count:1980},{type:"Rodent",icon:"🐀",count:1560},{type:"Street Light",icon:"💡",count:1100}
+    ],
+    topTopics:[{topic:"Tenant Protections",score:102.4},{topic:"Police Reform",score:91.6},{topic:"Anti-Displacement",score:84.3}],
+    centroid:[40.6872,-73.9418], mostActiveIssue:"Tenant Protections", penetration:1.38
+  },
+  {
+    name:"Williamsburg", borough:"Brooklyn", pes:-18, population:125000,
+    totalPetitions:980, dsa:290, liberal:510, conservative:180,
+    issues:[
+      {name:"Affordable Housing",pct:28},{name:"Small Business",pct:22},
+      {name:"Nightlife Economy",pct:20},{name:"Bike/Transit",pct:18},{name:"Arts Funding",pct:12}
+    ],
+    pulse311:[
+      {type:"Noise - Residential",icon:"🔊",count:4560},{type:"Noise - Commercial",icon:"📢",count:3210},
+      {type:"Illegal Parking",icon:"🚗",count:2340},{type:"Street Condition",icon:"🛣️",count:1120},{type:"Graffiti",icon:"🎨",count:980}
+    ],
+    topTopics:[{topic:"Affordable Housing",score:74.2},{topic:"Nightlife Protection",score:58.6},{topic:"Small Business Aid",score:52.1}],
+    centroid:[40.7081,-73.9571], mostActiveIssue:"Affordable Housing", penetration:0.78
+  },
+  {
+    name:"Borough Park", borough:"Brooklyn", pes:70, population:88000,
+    totalPetitions:520, dsa:20, liberal:130, conservative:370,
+    issues:[
+      {name:"Religious Freedom",pct:38},{name:"School Choice",pct:28},
+      {name:"Public Safety",pct:18},{name:"Tax Relief",pct:10},{name:"Zoning",pct:6}
+    ],
+    pulse311:[
+      {type:"Illegal Parking",icon:"🚗",count:2780},{type:"Street Condition",icon:"🛣️",count:1890},
+      {type:"Noise - Religious",icon:"🔔",count:1230},{type:"Sanitation",icon:"🗑️",count:980},{type:"Blocked Driveway",icon:"🚧",count:890}
+    ],
+    topTopics:[{topic:"Religious Liberty",score:91.8},{topic:"Yeshiva Funding",score:78.3},{topic:"Anti-Crime",score:65.4}],
+    centroid:[40.6301,-73.9974], mostActiveIssue:"Religious Liberty", penetration:0.59
+  },
+  {
+    name:"Sunset Park", borough:"Brooklyn", pes:-25, population:105000,
+    totalPetitions:870, dsa:270, liberal:440, conservative:160,
+    issues:[
+      {name:"Workers Rights",pct:30},{name:"Immigration",pct:28},
+      {name:"Housing",pct:22},{name:"Healthcare",pct:12},{name:"Education",pct:8}
+    ],
+    pulse311:[
+      {type:"Illegal Parking",icon:"🚗",count:2100},{type:"Heat/Hot Water",icon:"🔥",count:1780},
+      {type:"Noise - Residential",icon:"🔊",count:1560},{type:"Sanitation",icon:"🗑️",count:1230},{type:"Street Light",icon:"💡",count:890}
+    ],
+    topTopics:[{topic:"Worker Protections",score:78.4},{topic:"Immigration Relief",score:72.1},{topic:"Rent Stabilization",score:61.8}],
+    centroid:[40.6502,-74.0034], mostActiveIssue:"Worker Protections", penetration:0.83
+  },
+  {
+    name:"Flatbush", borough:"Brooklyn", pes:-60, population:112000,
+    totalPetitions:1100, dsa:580, liberal:380, conservative:140,
+    issues:[
+      {name:"Housing Justice",pct:35},{name:"Healthcare Access",pct:24},
+      {name:"Police Reform",pct:22},{name:"Education",pct:12},{name:"Food Access",pct:7}
+    ],
+    pulse311:[
+      {type:"Heat/Hot Water",icon:"🔥",count:2980},{type:"Noise - Residential",icon:"🔊",count:2100},
+      {type:"Rodent",icon:"🐀",count:1870},{type:"Illegal Parking",icon:"🚗",count:1560},{type:"Street Light",icon:"💡",count:1100}
+    ],
+    topTopics:[{topic:"Rent Stabilization",score:89.3},{topic:"Healthcare Access",score:74.6},{topic:"Anti-Displacement",score:68.2}],
+    centroid:[40.6406,-73.9563], mostActiveIssue:"Rent Stabilization", penetration:0.98
+  },
+  {
+    name:"Bensonhurst", borough:"Brooklyn", pes:42, population:82000,
+    totalPetitions:580, dsa:60, liberal:220, conservative:300,
+    issues:[
+      {name:"Public Safety",pct:30},{name:"Small Business",pct:26},
+      {name:"Infrastructure",pct:20},{name:"Zoning",pct:14},{name:"Parking",pct:10}
+    ],
+    pulse311:[
+      {type:"Illegal Parking",icon:"🚗",count:3450},{type:"Noise - Residential",icon:"🔊",count:1670},
+      {type:"Blocked Driveway",icon:"🚧",count:1450},{type:"Street Condition",icon:"🛣️",count:980},{type:"Sanitation",icon:"🗑️",count:820}
+    ],
+    topTopics:[{topic:"Anti-Crime Initiatives",score:76.8},{topic:"Small Business Tax Relief",score:64.2},{topic:"Parking Regulations",score:58.9}],
+    centroid:[40.6003,-73.9983], mostActiveIssue:"Anti-Crime Initiatives", penetration:0.71
+  },
+  {
+    name:"Sheepshead Bay", borough:"Brooklyn", pes:28, population:68000,
+    totalPetitions:480, dsa:70, liberal:220, conservative:190,
+    issues:[
+      {name:"Public Safety",pct:28},{name:"Infrastructure",pct:26},
+      {name:"Environment",pct:20},{name:"Small Business",pct:16},{name:"Housing",pct:10}
+    ],
+    pulse311:[
+      {type:"Illegal Parking",icon:"🚗",count:2130},{type:"Street Condition",icon:"🛣️",count:1870},
+      {type:"Noise - Residential",icon:"🔊",count:1340},{type:"Sanitation",icon:"🗑️",count:1120},{type:"Street Light",icon:"💡",count:870}
+    ],
+    topTopics:[{topic:"Coastal Flooding",score:68.4},{topic:"Public Safety",score:61.7},{topic:"Small Business Aid",score:54.2}],
+    centroid:[40.5935,-73.9441], mostActiveIssue:"Coastal Flooding", penetration:0.71
+  },
+  // ── QUEENS ──
+  {
+    name:"Astoria", borough:"Queens", pes:-15, population:95000,
+    totalPetitions:820, dsa:220, liberal:430, conservative:170,
+    issues:[
+      {name:"Affordable Housing",pct:26},{name:"Transit",pct:24},
+      {name:"Small Business",pct:22},{name:"Immigration",pct:16},{name:"Education",pct:12}
+    ],
+    pulse311:[
+      {type:"Noise - Residential",icon:"🔊",count:3120},{type:"Illegal Parking",icon:"🚗",count:2340},
+      {type:"Street Condition",icon:"🛣️",count:1560},{type:"Noise - Commercial",icon:"📢",count:1230},{type:"Sanitation",icon:"🗑️",count:890}
+    ],
+    topTopics:[{topic:"Transit Equity",score:71.3},{topic:"Affordable Housing",score:64.8},{topic:"Small Business Aid",score:58.2}],
+    centroid:[40.7721,-73.9302], mostActiveIssue:"Transit Equity", penetration:0.86
+  },
+  {
+    name:"Jackson Heights", borough:"Queens", pes:-30, population:108000,
+    totalPetitions:940, dsa:300, liberal:480, conservative:160,
+    issues:[
+      {name:"Immigration Reform",pct:38},{name:"Workers Rights",pct:26},
+      {name:"Housing",pct:20},{name:"Education",pct:10},{name:"Healthcare",pct:6}
+    ],
+    pulse311:[
+      {type:"Noise - Residential",icon:"🔊",count:2560},{type:"Illegal Parking",icon:"🚗",count:2180},
+      {type:"Heat/Hot Water",icon:"🔥",count:1780},{type:"Sanitation",icon:"🗑️",count:1450},{type:"Street Light",icon:"💡",count:980}
+    ],
+    topTopics:[{topic:"Immigration Policy",score:96.7},{topic:"Worker Protections",score:82.4},{topic:"Language Access",score:74.1}],
+    centroid:[40.7557,-73.8831], mostActiveIssue:"Immigration Policy", penetration:0.87
+  },
+  {
+    name:"Flushing", borough:"Queens", pes:10, population:132000,
+    totalPetitions:720, dsa:160, liberal:360, conservative:200,
+    issues:[
+      {name:"Business Regulation",pct:30},{name:"Education",pct:24},
+      {name:"Housing",pct:20},{name:"Transit",pct:16},{name:"Environment",pct:10}
+    ],
+    pulse311:[
+      {type:"Illegal Parking",icon:"🚗",count:3670},{type:"Noise - Commercial",icon:"📢",count:2340},
+      {type:"Street Condition",icon:"🛣️",count:1870},{type:"Sanitation",icon:"🗑️",count:1560},{type:"Noise - Residential",icon:"🔊",count:1230}
+    ],
+    topTopics:[{topic:"Business Regulations",score:78.9},{topic:"School Resources",score:67.4},{topic:"Transit Access",score:61.2}],
+    centroid:[40.7675,-73.8330], mostActiveIssue:"Business Regulations", penetration:0.55
+  },
+  {
+    name:"Jamaica", borough:"Queens", pes:-55, population:128000,
+    totalPetitions:1080, dsa:520, liberal:420, conservative:140,
+    issues:[
+      {name:"Housing Justice",pct:34},{name:"Economic Justice",pct:28},
+      {name:"Education",pct:18},{name:"Healthcare",pct:12},{name:"Police Reform",pct:8}
+    ],
+    pulse311:[
+      {type:"Heat/Hot Water",icon:"🔥",count:2890},{type:"Noise - Residential",icon:"🔊",count:2340},
+      {type:"Rodent",icon:"🐀",count:1780},{type:"Illegal Parking",icon:"🚗",count:1560},{type:"Street Light",icon:"💡",count:1120}
+    ],
+    topTopics:[{topic:"Affordable Housing",score:86.4},{topic:"Economic Development",score:74.8},{topic:"School Funding",score:67.3}],
+    centroid:[40.7021,-73.7952], mostActiveIssue:"Affordable Housing", penetration:0.84
+  },
+  {
+    name:"Forest Hills", borough:"Queens", pes:25, population:72000,
+    totalPetitions:520, dsa:80, liberal:260, conservative:180,
+    issues:[
+      {name:"Public Safety",pct:28},{name:"Transit",pct:26},
+      {name:"Education",pct:22},{name:"Housing",pct:14},{name:"Environment",pct:10}
+    ],
+    pulse311:[
+      {type:"Noise - Residential",icon:"🔊",count:1890},{type:"Illegal Parking",icon:"🚗",count:1670},
+      {type:"Street Condition",icon:"🛣️",count:1230},{type:"Blocked Driveway",icon:"🚧",count:980},{type:"Sanitation",icon:"🗑️",count:760}
+    ],
+    topTopics:[{topic:"Transit Improvements",score:67.8},{topic:"Safe Streets",score:62.4},{topic:"School Quality",score:58.9}],
+    centroid:[40.7174,-73.8448], mostActiveIssue:"Transit Improvements", penetration:0.72
+  },
+  {
+    name:"Howard Beach", borough:"Queens", pes:55, population:56000,
+    totalPetitions:380, dsa:20, liberal:120, conservative:240,
+    issues:[
+      {name:"Public Safety",pct:36},{name:"Flooding/Environment",pct:28},
+      {name:"Small Business",pct:18},{name:"Infrastructure",pct:12},{name:"Zoning",pct:6}
+    ],
+    pulse311:[
+      {type:"Illegal Parking",icon:"🚗",count:1980},{type:"Street Condition",icon:"🛣️",count:1560},
+      {type:"Flooding",icon:"🌊",count:1230},{type:"Sanitation",icon:"🗑️",count:890},{type:"Noise - Residential",icon:"🔊",count:780}
+    ],
+    topTopics:[{topic:"Anti-Crime",score:74.2},{topic:"Flood Mitigation",score:68.6},{topic:"Business Tax Relief",score:54.1}],
+    centroid:[40.6587,-73.8534], mostActiveIssue:"Anti-Crime", penetration:0.68
+  },
+  // ── MANHATTAN ──
+  {
+    name:"Harlem", borough:"Manhattan", pes:-68, population:115000,
+    totalPetitions:1480, dsa:840, liberal:480, conservative:160,
+    issues:[
+      {name:"Housing Justice",pct:42},{name:"Economic Justice",pct:26},
+      {name:"Police Reform",pct:18},{name:"Education",pct:8},{name:"Arts Funding",pct:6}
+    ],
+    pulse311:[
+      {type:"Heat/Hot Water",icon:"🔥",count:3450},{type:"Noise - Residential",icon:"🔊",count:2780},
+      {type:"Rodent",icon:"🐀",count:2100},{type:"Illegal Parking",icon:"🚗",count:1890},{type:"Street Light",icon:"💡",count:1340}
+    ],
+    topTopics:[{topic:"Anti-Displacement",score:108.6},{topic:"Community Land Trusts",score:89.3},{topic:"Police Accountability",score:82.7}],
+    centroid:[40.8116,-73.9465], mostActiveIssue:"Anti-Displacement", penetration:1.29
+  },
+  {
+    name:"Upper East Side", borough:"Manhattan", pes:35, population:220000,
+    totalPetitions:1260, dsa:120, liberal:680, conservative:460,
+    issues:[
+      {name:"Public Safety",pct:26},{name:"Education",pct:24},
+      {name:"Congestion Pricing",pct:20},{name:"Housing",pct:16},{name:"Parks",pct:14}
+    ],
+    pulse311:[
+      {type:"Noise - Residential",icon:"🔊",count:4230},{type:"Illegal Parking",icon:"🚗",count:3670},
+      {type:"Street Condition",icon:"🛣️",count:2100},{type:"Blocked Driveway",icon:"🚧",count:1890},{type:"Sanitation",icon:"🗑️",count:1560}
+    ],
+    topTopics:[{topic:"Anti-Congestion Pricing",score:84.6},{topic:"Public Safety",score:76.3},{topic:"School Funding",score:68.4}],
+    centroid:[40.7735,-73.9565], mostActiveIssue:"Anti-Congestion Pricing", penetration:0.57
+  },
+  {
+    name:"Washington Heights", borough:"Manhattan", pes:-55, population:168000,
+    totalPetitions:1380, dsa:680, liberal:540, conservative:160,
+    issues:[
+      {name:"Immigration Reform",pct:36},{name:"Housing",pct:28},
+      {name:"Healthcare",pct:18},{name:"Education",pct:12},{name:"Economic Justice",pct:6}
+    ],
+    pulse311:[
+      {type:"Heat/Hot Water",icon:"🔥",count:3120},{type:"Noise - Residential",icon:"🔊",count:2560},
+      {type:"Rodent",icon:"🐀",count:1890},{type:"Illegal Parking",icon:"🚗",count:1670},{type:"Street Light",icon:"💡",count:1230}
+    ],
+    topTopics:[{topic:"Immigration Protections",score:98.4},{topic:"Housing Affordability",score:84.7},{topic:"Healthcare Access",score:72.6}],
+    centroid:[40.8448,-73.9393], mostActiveIssue:"Immigration Protections", penetration:0.82
+  },
+  {
+    name:"Hell's Kitchen", borough:"Manhattan", pes:-35, population:85000,
+    totalPetitions:920, dsa:300, liberal:480, conservative:140,
+    issues:[
+      {name:"Housing",pct:30},{name:"Nightlife Economy",pct:24},
+      {name:"Transit",pct:20},{name:"Workers Rights",pct:16},{name:"Environment",pct:10}
+    ],
+    pulse311:[
+      {type:"Noise - Residential",icon:"🔊",count:4100},{type:"Noise - Commercial",icon:"📢",count:3560},
+      {type:"Illegal Parking",icon:"🚗",count:2340},{type:"Street Condition",icon:"🛣️",count:1560},{type:"Sanitation",icon:"🗑️",count:1230}
+    ],
+    topTopics:[{topic:"Affordable Housing",score:78.4},{topic:"Nightlife Worker Rights",score:67.2},{topic:"Transit Access",score:61.8}],
+    centroid:[40.7638,-73.9918], mostActiveIssue:"Affordable Housing", penetration:1.08
+  },
+  {
+    name:"Lower East Side", borough:"Manhattan", pes:-42, population:72000,
+    totalPetitions:860, dsa:320, liberal:400, conservative:140,
+    issues:[
+      {name:"Housing",pct:32},{name:"Arts & Culture",pct:22},
+      {name:"Immigration",pct:20},{name:"Workers Rights",pct:16},{name:"Environment",pct:10}
+    ],
+    pulse311:[
+      {type:"Noise - Residential",icon:"🔊",count:3210},{type:"Noise - Commercial",icon:"📢",count:2780},
+      {type:"Heat/Hot Water",icon:"🔥",count:1890},{type:"Illegal Parking",icon:"🚗",count:1560},{type:"Rodent",icon:"🐀",count:1230}
+    ],
+    topTopics:[{topic:"Anti-Gentrification",score:82.6},{topic:"Arts Funding",score:68.4},{topic:"Immigrant Rights",score:64.9}],
+    centroid:[40.7157,-73.9863], mostActiveIssue:"Anti-Gentrification", penetration:1.19
+  },
+  // ── BRONX ──
+  {
+    name:"South Bronx", borough:"Bronx", pes:-80, population:152000,
+    totalPetitions:2280, dsa:1480, liberal:620, conservative:180,
+    issues:[
+      {name:"Housing Justice",pct:38},{name:"Environmental Justice",pct:24},
+      {name:"Economic Justice",pct:18},{name:"Healthcare",pct:12},{name:"Education",pct:8}
+    ],
+    pulse311:[
+      {type:"Heat/Hot Water",icon:"🔥",count:5680},{type:"Noise - Residential",icon:"🔊",count:3890},
+      {type:"Rodent",icon:"🐀",count:3120},{type:"Street Light",icon:"💡",count:2340},{type:"Sanitation",icon:"🗑️",count:2100}
+    ],
+    topTopics:[{topic:"Housing Justice",score:128.4},{topic:"Environmental Justice",score:106.7},{topic:"Economic Relief",score:94.3}],
+    centroid:[40.8177,-73.9229], mostActiveIssue:"Housing Justice", penetration:1.50
+  },
+  {
+    name:"Riverdale", borough:"Bronx", pes:20, population:48000,
+    totalPetitions:380, dsa:80, liberal:200, conservative:100,
+    issues:[
+      {name:"Education",pct:30},{name:"Public Safety",pct:26},
+      {name:"Environment",pct:20},{name:"Transit",pct:14},{name:"Housing",pct:10}
+    ],
+    pulse311:[
+      {type:"Noise - Residential",icon:"🔊",count:1230},{type:"Street Condition",icon:"🛣️",count:1120},
+      {type:"Illegal Parking",icon:"🚗",count:980},{type:"Sanitation",icon:"🗑️",count:760},{type:"Street Light",icon:"💡",count:540}
+    ],
+    topTopics:[{topic:"School Investment",score:58.4},{topic:"Safe Streets",score:52.7},{topic:"Environmental Protection",score:48.6}],
+    centroid:[40.8951,-73.9126], mostActiveIssue:"School Investment", penetration:0.79
+  },
+  // ── STATEN ISLAND ──
+  {
+    name:"St. George", borough:"Staten Island", pes:65, population:42000,
+    totalPetitions:320, dsa:20, liberal:90, conservative:210,
+    issues:[
+      {name:"Public Safety",pct:36},{name:"Infrastructure",pct:26},
+      {name:"Small Business",pct:18},{name:"Ferry Access",pct:12},{name:"Zoning",pct:8}
+    ],
+    pulse311:[
+      {type:"Illegal Parking",icon:"🚗",count:1780},{type:"Street Condition",icon:"🛣️",count:1450},
+      {type:"Noise - Residential",icon:"🔊",count:1120},{type:"Sanitation",icon:"🗑️",count:890},{type:"Blocked Driveway",icon:"🚧",count:780}
+    ],
+    topTopics:[{topic:"Crime Prevention",score:78.6},{topic:"Infrastructure Investment",score:64.3},{topic:"Ferry Reliability",score:56.8}],
+    centroid:[40.6437,-74.0740], mostActiveIssue:"Crime Prevention", penetration:0.76
+  },
+  {
+    name:"Great Kills", borough:"Staten Island", pes:72, population:38000,
+    totalPetitions:280, dsa:10, liberal:70, conservative:200,
+    issues:[
+      {name:"Public Safety",pct:38},{name:"Tax Relief",pct:24},
+      {name:"Infrastructure",pct:20},{name:"Zoning",pct:12},{name:"Schools",pct:6}
+    ],
+    pulse311:[
+      {type:"Illegal Parking",icon:"🚗",count:1560},{type:"Street Condition",icon:"🛣️",count:1230},
+      {type:"Noise - Residential",icon:"🔊",count:890},{type:"Sanitation",icon:"🗑️",count:780},{type:"Street Light",icon:"💡",count:640}
+    ],
+    topTopics:[{topic:"Law and Order",score:82.4},{topic:"Property Tax Relief",score:71.6},{topic:"Anti-Development",score:62.8}],
+    centroid:[40.5578,-74.1512], mostActiveIssue:"Law and Order", penetration:0.74
+  }
+];
+
+// ═══════════════════════════════════════════════════════════════════
+// UTILITY FUNCTIONS
+// ═══════════════════════════════════════════════════════════════════
+function pesColor(pes) {
+  const stops=[[-100,[107,33,168]],[-33,[129,140,248]],[0,[100,116,139]],[33,[249,115,22]],[100,[153,27,27]]];
+  for(let i=1;i<stops.length;i++){
+    if(pes<=stops[i][0]){
+      const t=(pes-stops[i-1][0])/(stops[i][0]-stops[i-1][0]);
+      const r=Math.round(stops[i-1][1][0]+t*(stops[i][1][0]-stops[i-1][1][0]));
+      const g=Math.round(stops[i-1][1][1]+t*(stops[i][1][1]-stops[i-1][1][1]));
+      const b=Math.round(stops[i-1][1][2]+t*(stops[i][1][2]-stops[i-1][1][2]));
+      return `rgb(${r},${g},${b})`;
+    }
+  }
+  return 'rgb(153,27,27)';
+}
+
+function pesLabel(pes){
+  if(pes<-33) return "Progressive";
+  if(pes>33) return "Conservative";
+  return "Moderate";
+}
+
+function engagementRate(n){return ((n.totalPetitions/n.population)*1000).toFixed(1);}
+
+function fmtNum(n){return n>=1000?(n/1000).toFixed(1)+'k':n.toString();}
+
+function hexToRgb(hex){
+  const r=parseInt(hex.slice(1,3),16);const g=parseInt(hex.slice(3,5),16);const b=parseInt(hex.slice(5,7),16);
+  return [r,g,b];
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// DATA SERVICE
+// ═══════════════════════════════════════════════════════════════════
+class DataService {
+  constructor(){this.isLive=false;this.data=MOCK_DATA;}
+
+  async init(){
+    try{
+      const ctrl=new AbortController();
+      const timer=setTimeout(()=>ctrl.abort(),5000);
+      const r=await fetch(
+        `${CONFIG.supabaseUrl}/rest/v1/petitions?limit=1`,
+        {headers:{"apikey":CONFIG.supabaseKey,"Authorization":`Bearer ${CONFIG.supabaseKey}`},signal:ctrl.signal}
+      );
+      clearTimeout(timer);
+      if(r.ok){
+        const rows=await r.json();
+        if(Array.isArray(rows)&&rows.length>0){
+          await this.loadLiveData();
+          this.isLive=true;
+        }
+      }
+    }catch(e){console.log("Supabase unavailable, using demo data:",e.message);}
+    return this;
+  }
+
+  async loadLiveData(){
+    // Fetch all petitions and compute PES per neighborhood
+    try{
+      const r=await fetch(
+        `${CONFIG.supabaseUrl}/rest/v1/petitions?select=neighborhood,borough,political_lean,issue_category,created_at&limit=10000`,
+        {headers:{"apikey":CONFIG.supabaseKey,"Authorization":`Bearer ${CONFIG.supabaseKey}`}}
+      );
+      if(!r.ok)return;
+      const rows=await r.json();
+      // Group by neighborhood
+      const groups={};
+      for(const row of rows){
+        if(!groups[row.neighborhood])groups[row.neighborhood]={petitions:[],borough:row.borough};
+        groups[row.neighborhood].petitions.push(row);
+      }
+      // Rebuild data
+      this.data=Object.entries(groups).map(([name,g])=>{
+        const mock=MOCK_DATA.find(m=>m.name.toLowerCase()===name.toLowerCase())||{centroid:[40.7,-74],population:80000};
+        const pts=g.petitions;
+        const dsa=pts.filter(p=>p.political_lean==='dsa').length;
+        const lib=pts.filter(p=>p.political_lean==='liberal').length;
+        const con=pts.filter(p=>p.political_lean==='conservative').length;
+        const pes=this.computePES(dsa,lib,con,pts.length);
+        const issues=this.computeIssueBreakdown(pts);
+        const topTopics=this.computePulseB(pts);
+        return{
+          name,borough:g.borough||mock.borough,pes,
+          population:mock.population,totalPetitions:pts.length,
+          dsa,liberal:lib,conservative:con,
+          issues,topTopics,centroid:mock.centroid,
+          pulse311:mock.pulse311,mostActiveIssue:issues[0]?.name||'Unknown',
+          penetration:((pts.length/mock.population)*100).toFixed(2)
+        };
+      });
+    }catch(e){console.log("Error loading live data:",e);}
+  }
+
+  computePES(dsa,lib,con,total){
+    if(total===0)return 0;
+    return Math.round(((dsa*-1+lib*0+con*1)/total)*100);
+  }
+
+  computeIssueBreakdown(petitions){
+    const counts={};
+    for(const p of petitions){const k=p.issue_category||'Other';counts[k]=(counts[k]||0)+1;}
+    const total=petitions.length;
+    return Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([name,cnt])=>({name,pct:Math.round(cnt/total*100)}));
+  }
+
+  computePulseB(petitions){
+    const now=Date.now();
+    const scores={};
+    for(const p of petitions){
+      const k=p.issue_category||'Other';
+      const daysAgo=(now-new Date(p.created_at).getTime())/(1000*86400);
+      scores[k]=(scores[k]||0)+(1/(daysAgo+1));
+    }
+    return Object.entries(scores).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([topic,score])=>({topic,score:+score.toFixed(1)}));
+  }
+
+  getNeighborhoodData(name){return this.data.find(d=>d.name===name);}
+  getAllData(){return this.data;}
+  filterByBorough(borough){return borough==='all'?this.data:this.data.filter(d=>d.borough===borough);}
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// MAP MANAGER
+// ═══════════════════════════════════════════════════════════════════
+class MapManager {
+  constructor(dataService,onNeighborhoodClick){
+    this.ds=dataService;this.onClick=onNeighborhoodClick;
+    this.map=null;this.geoLayer=null;this.markerLayer=null;
+    this.activeBorough='all';this.selectedName=null;
+  }
+
+  async init(){
+    this.map=L.map('map',{center:[40.7128,-73.9],zoom:11,zoomControl:true});
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
+      attribution:'&copy; <a href="https://www.openstreetmap.org">OpenStreetMap</a> &copy; <a href="https://carto.com">CARTO</a>',
+      subdomains:'abcd',maxZoom:19
+    }).addTo(this.map);
+
+    await this.loadGeoJson();
+  }
+
+  async loadGeoJson(){
+    try{
+      const ctrl=new AbortController();
+      const timer=setTimeout(()=>ctrl.abort(),8000);
+      const r=await fetch(CONFIG.geoJsonUrl,{signal:ctrl.signal});
+      clearTimeout(timer);
+      if(r.ok){
+        const geo=await r.json();
+        this.renderGeoLayer(geo);
+        return;
+      }
+    }catch(e){console.log("GeoJSON unavailable, using markers:",e.message);}
+    this.renderMarkers();
+  }
+
+  matchGeo(feature){
+    const ntaName=(feature.properties.ntaname||feature.properties.NTAName||'').toLowerCase();
+    const ntaCode=(feature.properties.ntacode||feature.properties.NTACode||'').toLowerCase();
+    return this.ds.getAllData().find(d=>{
+      const dn=d.name.toLowerCase();
+      return ntaName.includes(dn)||dn.split(' ').every(w=>ntaName.includes(w));
+    });
+  }
+
+  renderGeoLayer(geo){
+    if(this.geoLayer)this.map.removeLayer(this.geoLayer);
+    const self=this;
+    this.geoLayer=L.geoJSON(geo,{
+      style:(feature)=>{
+        const nd=self.matchGeo(feature);
+        if(!nd)return{fillColor:'#1A2540',fillOpacity:0.3,color:'#1E3050',weight:1};
+        return{
+          fillColor:pesColor(nd.pes),fillOpacity:0.7,
+          color:'rgba(255,255,255,0.15)',weight:1
+        };
+      },
+      onEachFeature:(feature,layer)=>{
+        const nd=self.matchGeo(feature);
+        if(!nd)return;
+        const er=engagementRate(nd);
+        const lean=pesLabel(nd.pes);
+        layer.bindTooltip(`
+          <div class="tooltip-inner">
+            <div class="tooltip-name">${nd.name}</div>
+            <div class="tooltip-pes" style="color:${pesColor(nd.pes)}">${nd.pes>0?'+':''}${nd.pes}</div>
+            <div class="tooltip-meta">${nd.borough} · ${lean}</div>
+            <div class="tooltip-pills">
+              <span class="tooltip-pill" style="background:rgba(30,111,255,.2);color:#93C5FD">ER: ${er}/1k</span>
+              <span class="tooltip-pill" style="background:rgba(255,184,0,.15);color:#FCD34D">${fmtNum(nd.totalPetitions)} petitions</span>
+            </div>
+          </div>`,
+          {className:'map-tooltip',sticky:true,opacity:1}
+        );
+        layer.on({
+          mouseover:(e)=>{
+            if(self.selectedName!==nd.name)e.target.setStyle({fillOpacity:0.9,weight:2,color:'rgba(255,255,255,0.5)'});
+          },
+          mouseout:(e)=>{
+            if(self.selectedName!==nd.name)self.geoLayer.resetStyle(e.target);
+          },
+          click:()=>self.onClick(nd.name)
+        });
+      },
+      filter:(feature)=>{
+        if(self.activeBorough==='all')return true;
+        const nd=self.matchGeo(feature);
+        return nd&&nd.borough===self.activeBorough;
+      }
+    }).addTo(this.map);
+  }
+
+  renderMarkers(){
+    if(this.markerLayer)this.map.removeLayer(this.markerLayer);
+    this.markerLayer=L.layerGroup().addTo(this.map);
+    const data=this.ds.filterByBorough(this.activeBorough);
+    data.forEach(nd=>{
+      const color=pesColor(nd.pes);
+      const er=engagementRate(nd);
+      const size=Math.max(12,Math.min(28,nd.totalPetitions/80));
+      const icon=L.divIcon({
+        className:'',
+        html:`<div style="
+          width:${size*2}px;height:${size*2}px;border-radius:50%;
+          background:${color};opacity:0.85;
+          border:2px solid rgba(255,255,255,0.3);
+          cursor:pointer;
+          box-shadow:0 0 ${size}px ${color}44;
+          display:flex;align-items:center;justify-content:center;
+          font-size:${Math.max(8,size-4)}px;font-weight:700;color:white;
+          ">
+        </div>`,
+        iconSize:[size*2,size*2],iconAnchor:[size,size]
+      });
+      const marker=L.marker(nd.centroid,{icon});
+      marker.bindTooltip(`
+        <div class="tooltip-inner">
+          <div class="tooltip-name">${nd.name}</div>
+          <div class="tooltip-pes" style="color:${color}">${nd.pes>0?'+':''}${nd.pes}</div>
+          <div class="tooltip-meta">${nd.borough} · ${pesLabel(nd.pes)}</div>
+          <div class="tooltip-pills">
+            <span class="tooltip-pill" style="background:rgba(30,111,255,.2);color:#93C5FD">ER: ${er}/1k</span>
+            <span class="tooltip-pill" style="background:rgba(255,184,0,.15);color:#FCD34D">${fmtNum(nd.totalPetitions)} petitions</span>
+          </div>
+        </div>`,
+        {className:'map-tooltip',sticky:true,opacity:1}
+      );
+      marker.on('click',()=>this.onClick(nd.name));
+      marker.addTo(this.markerLayer);
+    });
+  }
+
+  filterBorough(borough){
+    this.activeBorough=borough;
+    if(this.geoLayer)this.map.removeLayer(this.geoLayer);
+    if(this.markerLayer)this.map.removeLayer(this.markerLayer);
+    if(this.geoLayer&&this.geoLayer._layers&&Object.keys(this.geoLayer._layers).length>0){
+      this.renderGeoLayer(this.geoLayer.toGeoJSON());
+    }else{
+      this.renderMarkers();
+    }
+    if(borough!=='all'){
+      const pts=this.ds.filterByBorough(borough);
+      if(pts.length){
+        const lats=pts.map(p=>p.centroid[0]);
+        const lngs=pts.map(p=>p.centroid[1]);
+        this.map.fitBounds([[Math.min(...lats)-0.02,Math.min(...lngs)-0.02],[Math.max(...lats)+0.02,Math.max(...lngs)+0.02]]);
+      }
+    }else{
+      this.map.setView([40.7128,-73.9],11);
+    }
+  }
+
+  setSelected(name){this.selectedName=name;}
+
+  // Re-render the map after data has been refreshed (e.g. after upload)
+  refresh(){
+    if(this.geoLayer && this.geoLayer._layers && Object.keys(this.geoLayer._layers).length > 0){
+      // Re-render the GeoJSON layer with updated colours
+      const rawGeo = this.geoLayer.toGeoJSON();
+      this.renderGeoLayer(rawGeo);
+    } else {
+      this.renderMarkers();
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PANEL MANAGER
+// ═══════════════════════════════════════════════════════════════════
+class PanelManager {
+  constructor(){
+    this.panel=document.getElementById('panel');
+    this.nameEl=document.getElementById('panel-name');
+    this.boroughEl=document.getElementById('panel-borough');
+    this.pesBadgeEl=document.getElementById('panel-pes-badge');
+    this.activeTab='profile';
+    this.currentData=null;
+    this.donutChart=null;
+    this.pulseCache={};
+    this.init();
+  }
+
+  init(){
+    document.getElementById('panel-close-btn').addEventListener('click',()=>this.close());
+    document.querySelectorAll('.tab-btn').forEach(btn=>{
+      btn.addEventListener('click',()=>{
+        document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
+        btn.classList.add('active');
+        this.activeTab=btn.dataset.tab;
+        document.getElementById(`tab-${this.activeTab}`).classList.add('active');
+        if(this.activeTab==='pulse'&&this.currentData)this.renderPulse(this.currentData);
+      });
+    });
+  }
+
+  open(nd){
+    this.currentData=nd;
+    this.panel.classList.add('open');
+    this.nameEl.textContent=nd.name;
+    this.boroughEl.textContent=nd.borough;
+    const color=pesColor(nd.pes);
+    this.pesBadgeEl.textContent=`PES ${nd.pes>0?'+':''}${nd.pes}`;
+    this.pesBadgeEl.style.cssText=`background:${color}22;color:${color};border:1px solid ${color}55;border-radius:12px;padding:2px 8px;font-size:11px;font-weight:700;`;
+
+    // Reset to profile tab
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
+    document.querySelector('[data-tab="profile"]').classList.add('active');
+    document.getElementById('tab-profile').classList.add('active');
+    this.activeTab='profile';
+
+    this.renderProfile(nd);
+    this.renderIssues(nd);
+  }
+
+  close(){this.panel.classList.remove('open');}
+
+  // ── PROFILE TAB ──
+  renderProfile(nd){
+    const color=pesColor(nd.pes);
+    this.renderGauge(nd.pes);
+    document.getElementById('stat-pes').textContent=`${nd.pes>0?'+':''}${nd.pes}`;
+    document.getElementById('stat-pes').style.color=color;
+    document.getElementById('stat-er').textContent=engagementRate(nd);
+    document.getElementById('stat-er').style.color='#60A5FA';
+    this.renderDonut(nd);
+  }
+
+  renderGauge(pes){
+    const svg=document.getElementById('gauge-svg');
+    const cx=110,cy=110,r=80,sw=18;
+    // Gauge arc: 180° to 0° (left to right, upper semicircle)
+    function polarXY(angleDeg,radius){
+      const rad=angleDeg*Math.PI/180;
+      return{x:cx+radius*Math.cos(rad),y:cy-radius*Math.sin(rad)};
+    }
+    function arcPath(startDeg,endDeg,rad){
+      const s=polarXY(startDeg,rad),e=polarXY(endDeg,rad);
+      const large=Math.abs(endDeg-startDeg)>180?1:0;
+      const sweep=startDeg>endDeg?0:1;
+      return`M${s.x},${s.y} A${rad},${rad} 0 ${large},${sweep} ${e.x},${e.y}`;
+    }
+    // needle angle: 180° (left) → 0° (right), mapped from -100→+100
+    const needleAngle=180-(pes+100)*180/200;
+    const needleLen=65;
+    const np=polarXY(needleAngle,needleLen);
+    const color=pesColor(pes);
+    // Segments
+    const prog=pesColor(-67),mod='#64748B',cons=pesColor(67);
+    svg.innerHTML=`
+      <!-- bg arc -->
+      <path d="${arcPath(0,180,r)}" fill="none" stroke="#1A2540" stroke-width="${sw}" stroke-linecap="round"/>
+      <!-- colored segments -->
+      <path d="${arcPath(60,180,r)}" fill="none" stroke="${prog}" stroke-width="${sw}" stroke-linecap="round" opacity="0.8"/>
+      <path d="${arcPath(120,60,r)}" fill="none" stroke="${mod}" stroke-width="${sw}" stroke-linecap="round" opacity="0.7"/>
+      <path d="${arcPath(0,120,r)}" fill="none" stroke="${cons}" stroke-width="${sw}" stroke-linecap="round" opacity="0.8"/>
+      <!-- tick marks -->
+      ${[-100,-66,-33,0,33,66,100].map(v=>{
+        const a=180-(v+100)*180/200;
+        const inner=polarXY(a,r-sw/2-2),outer=polarXY(a,r+sw/2+2);
+        return`<line x1="${inner.x}" y1="${inner.y}" x2="${outer.x}" y2="${outer.y}" stroke="#0A1628" stroke-width="1.5"/>`;
+      }).join('')}
+      <!-- needle base -->
+      <circle cx="${cx}" cy="${cy}" r="8" fill="#1E3050" stroke="#1E6FFF" stroke-width="2"/>
+      <!-- needle -->
+      <line x1="${cx}" y1="${cy}" x2="${np.x}" y2="${np.y}" stroke="${color}" stroke-width="3" stroke-linecap="round"/>
+      <circle cx="${cx}" cy="${cy}" r="5" fill="${color}"/>
+      <!-- value text -->
+      <text x="${cx}" y="${cy+32}" text-anchor="middle" fill="${color}" font-size="30" font-weight="800" font-family="system-ui">${pes>0?'+':''}${pes}</text>
+      <!-- labels -->
+      <text x="22" y="${cy+16}" fill="#818CF8" font-size="9" font-family="system-ui">PROG</text>
+      <text x="${cx}" y="${cy-r-10}" text-anchor="middle" fill="#94A3B8" font-size="9" font-family="system-ui">0</text>
+      <text x="${cx*2-28}" y="${cy+16}" fill="#F87171" font-size="9" font-family="system-ui">CONS</text>
+    `;
+    // Lean label
+    const label=pesLabel(pes);
+    document.getElementById('lean-label').textContent=label;
+    document.getElementById('lean-label').style.color=color;
+    // Lean marker position
+    const pct=((pes+100)/200*100);
+    document.getElementById('lean-marker').style.left=`${pct}%`;
+    document.getElementById('lean-marker').style.borderColor=color;
+  }
+
+  renderDonut(nd){
+    if(this.donutChart){this.donutChart.destroy();this.donutChart=null;}
+    const ctx=document.getElementById('donut-chart');
+    if(!ctx)return;
+    ctx.width=180;ctx.height=180;
+    this.donutChart=new Chart(ctx,{
+      type:'doughnut',
+      data:{
+        labels:['DSA/Progressive','Liberal/Democrat','Conservative/Republican'],
+        datasets:[{
+          data:[nd.dsa,nd.liberal,nd.conservative],
+          backgroundColor:['#7C3AED','#3B82F6','#DC2626'],
+          borderWidth:0,hoverOffset:4
+        }]
+      },
+      options:{
+        cutout:'70%',responsive:false,
+        plugins:{legend:{display:false},tooltip:{callbacks:{label:(ctx)=>`${ctx.label}: ${ctx.parsed} (${Math.round(ctx.parsed/nd.totalPetitions*100)}%)`}}}
+      }
+    });
+    document.getElementById('donut-total').textContent=fmtNum(nd.totalPetitions);
+    const legend=document.getElementById('donut-legend');
+    const items=[
+      {label:`DSA / Progressive`,count:nd.dsa,color:'#7C3AED'},
+      {label:`Liberal / Democrat`,count:nd.liberal,color:'#3B82F6'},
+      {label:`Conservative / Republican`,count:nd.conservative,color:'#DC2626'}
+    ];
+    legend.innerHTML=items.map(it=>`
+      <div class="donut-legend-item">
+        <div class="donut-legend-dot" style="background:${it.color}"></div>
+        <span style="flex:1;color:var(--muted)">${it.label}</span>
+        <span style="font-weight:700">${fmtNum(it.count)}</span>
+        <span style="color:var(--muted);margin-left:4px">(${Math.round(it.count/nd.totalPetitions*100)}%)</span>
+      </div>`).join('');
+  }
+
+  // ── ISSUES TAB ──
+  renderIssues(nd){
+    const colors=['#1E6FFF','#3B82F6','#60A5FA','#93C5FD','#BFDBFE'];
+    const maxPct=Math.max(...nd.issues.map(i=>i.pct));
+    document.getElementById('issues-bar').innerHTML=nd.issues.map((issue,idx)=>`
+      <div class="bar-row">
+        <div class="bar-label" title="${issue.name}">${issue.name}</div>
+        <div class="bar-track">
+          <div class="bar-fill" style="width:${(issue.pct/maxPct*100).toFixed(1)}%;background:${colors[idx]}">
+            <span class="bar-pct">${issue.pct}%</span>
+          </div>
+        </div>
+        <div class="bar-num">${Math.round(nd.totalPetitions*issue.pct/100)}</div>
+      </div>`).join('');
+    document.getElementById('penetration-val').textContent=`${nd.penetration}%`;
+    document.getElementById('ytd-volume').textContent=fmtNum(nd.totalPetitions);
+    document.getElementById('ytd-sub').textContent=`across ${nd.issues.length} issue categories`;
+  }
+
+  // ── PULSE TAB ──
+  async renderPulse(nd){
+    // 311 data
+    await this.render311(nd);
+    // Concern Index
+    const maxScore=Math.max(...nd.topTopics.map(t=>t.score));
+    document.getElementById('concern-list').innerHTML=nd.topTopics.map((t,i)=>`
+      <div class="concern-item${i===0?' top':''}">
+        <div class="concern-header">
+          <span class="concern-topic">${t.topic}</span>
+          <span class="concern-score">${t.score.toFixed(1)}</span>
+        </div>
+        <div class="concern-bar-wrap">
+          <div class="concern-bar-fill" style="width:${(t.score/maxScore*100).toFixed(1)}%"></div>
+        </div>
+        ${i===0?`<div><span class="active-badge">⭐ Most Active Issue</span></div>`:''}
+      </div>`).join('');
+  }
+
+  async render311(nd){
+    const boroughMap={
+      'Brooklyn':'BROOKLYN','Queens':'QUEENS','Manhattan':'MANHATTAN',
+      'Bronx':'BRONX','Staten Island':'STATEN ISLAND'
+    };
+    const boro=boroughMap[nd.borough]||'BROOKLYN';
+    let complaints=nd.pulse311;
+    try{
+      const url=`${CONFIG.api311}?$select=complaint_type,count(*)+as+cnt&$group=complaint_type&$order=cnt+DESC&$limit=5&$where=borough=%27${boro}%27`;
+      const ctrl=new AbortController();setTimeout(()=>ctrl.abort(),4000);
+      const r=await fetch(url,{signal:ctrl.signal});
+      if(r.ok){
+        const rows=await r.json();
+        if(rows&&rows.length){
+          const icons={'HEAT/HOT WATER':'🔥','NOISE - RESIDENTIAL':'🔊','ILLEGAL PARKING':'🚗','RODENT':'🐀','STREET LIGHT CONDITION':'💡','BLOCKED DRIVEWAY':'🚧','NOISE - COMMERCIAL':'📢','STREET CONDITION':'🛣️','SANITATION CONDITION':'🗑️'};
+          complaints=rows.map(row=>({
+            type:row.complaint_type,
+            icon:icons[row.complaint_type.toUpperCase()]||'📋',
+            count:parseInt(row.cnt)||0
+          }));
+        }
+      }
+    }catch(e){}
+    const maxCount=Math.max(...complaints.map(c=>c.count));
+    document.getElementById('complaint-list').innerHTML=complaints.map((c,i)=>`
+      <div class="complaint-item">
+        <div class="complaint-rank">${i+1}</div>
+        <div class="complaint-icon">${c.icon}</div>
+        <div class="complaint-info">
+          <div class="complaint-type">${c.type}</div>
+          <div class="complaint-count">${fmtNum(c.count)} reports</div>
+          <div class="complaint-bar-mini">
+            <div class="complaint-bar-fill" style="width:${(c.count/maxCount*100).toFixed(1)}%"></div>
+          </div>
+        </div>
+      </div>`).join('');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ZIP → NEIGHBORHOOD MAP (NYC)
+// ═══════════════════════════════════════════════════════════════════
+const ZIP_MAP = {
+  // ── BRONX ──
+  '10451':{n:'South Bronx',b:'Bronx'},'10452':{n:'South Bronx',b:'Bronx'},
+  '10453':{n:'Fordham',b:'Bronx'},'10454':{n:'South Bronx',b:'Bronx'},
+  '10455':{n:'South Bronx',b:'Bronx'},'10456':{n:'South Bronx',b:'Bronx'},
+  '10457':{n:'Fordham',b:'Bronx'},'10458':{n:'Fordham',b:'Bronx'},
+  '10459':{n:'South Bronx',b:'Bronx'},'10460':{n:'South Bronx',b:'Bronx'},
+  '10461':{n:'Riverdale',b:'Bronx'},'10462':{n:'Riverdale',b:'Bronx'},
+  '10463':{n:'Riverdale',b:'Bronx'},'10464':{n:'Riverdale',b:'Bronx'},
+  '10465':{n:'Riverdale',b:'Bronx'},'10466':{n:'Riverdale',b:'Bronx'},
+  '10467':{n:'Fordham',b:'Bronx'},'10468':{n:'Fordham',b:'Bronx'},
+  '10469':{n:'Riverdale',b:'Bronx'},'10470':{n:'Riverdale',b:'Bronx'},
+  '10471':{n:'Riverdale',b:'Bronx'},'10472':{n:'South Bronx',b:'Bronx'},
+  '10473':{n:'South Bronx',b:'Bronx'},'10474':{n:'South Bronx',b:'Bronx'},
+  '10475':{n:'Riverdale',b:'Bronx'},
+  // ── BROOKLYN ──
+  '11201':{n:'Park Slope',b:'Brooklyn'},'11202':{n:'Park Slope',b:'Brooklyn'},
+  '11203':{n:'Flatbush',b:'Brooklyn'},'11204':{n:'Borough Park',b:'Brooklyn'},
+  '11205':{n:'Bedford-Stuyvesant',b:'Brooklyn'},'11206':{n:'Williamsburg',b:'Brooklyn'},
+  '11207':{n:'Flatbush',b:'Brooklyn'},'11208':{n:'Flatbush',b:'Brooklyn'},
+  '11209':{n:'Bay Ridge',b:'Brooklyn'},'11210':{n:'Flatbush',b:'Brooklyn'},
+  '11211':{n:'Williamsburg',b:'Brooklyn'},'11212':{n:'Flatbush',b:'Brooklyn'},
+  '11213':{n:'Crown Heights',b:'Brooklyn'},'11214':{n:'Bensonhurst',b:'Brooklyn'},
+  '11215':{n:'Park Slope',b:'Brooklyn'},'11216':{n:'Bedford-Stuyvesant',b:'Brooklyn'},
+  '11217':{n:'Park Slope',b:'Brooklyn'},'11218':{n:'Flatbush',b:'Brooklyn'},
+  '11219':{n:'Borough Park',b:'Brooklyn'},'11220':{n:'Sunset Park',b:'Brooklyn'},
+  '11221':{n:'Bedford-Stuyvesant',b:'Brooklyn'},'11222':{n:'Williamsburg',b:'Brooklyn'},
+  '11223':{n:'Sheepshead Bay',b:'Brooklyn'},'11224':{n:'Sheepshead Bay',b:'Brooklyn'},
+  '11225':{n:'Flatbush',b:'Brooklyn'},'11226':{n:'Flatbush',b:'Brooklyn'},
+  '11228':{n:'Bensonhurst',b:'Brooklyn'},'11229':{n:'Sheepshead Bay',b:'Brooklyn'},
+  '11230':{n:'Flatbush',b:'Brooklyn'},'11231':{n:'Park Slope',b:'Brooklyn'},
+  '11232':{n:'Sunset Park',b:'Brooklyn'},'11233':{n:'Bedford-Stuyvesant',b:'Brooklyn'},
+  '11234':{n:'Flatbush',b:'Brooklyn'},'11235':{n:'Sheepshead Bay',b:'Brooklyn'},
+  '11236':{n:'Flatbush',b:'Brooklyn'},'11237':{n:'Williamsburg',b:'Brooklyn'},
+  '11238':{n:'Crown Heights',b:'Brooklyn'},'11249':{n:'Williamsburg',b:'Brooklyn'},
+  // ── QUEENS ──
+  '11101':{n:'Astoria',b:'Queens'},'11102':{n:'Astoria',b:'Queens'},
+  '11103':{n:'Astoria',b:'Queens'},'11104':{n:'Astoria',b:'Queens'},
+  '11105':{n:'Astoria',b:'Queens'},'11106':{n:'Astoria',b:'Queens'},
+  '11354':{n:'Flushing',b:'Queens'},'11355':{n:'Flushing',b:'Queens'},
+  '11356':{n:'Flushing',b:'Queens'},'11357':{n:'Flushing',b:'Queens'},
+  '11358':{n:'Flushing',b:'Queens'},'11367':{n:'Forest Hills',b:'Queens'},
+  '11368':{n:'Jackson Heights',b:'Queens'},'11369':{n:'Jackson Heights',b:'Queens'},
+  '11370':{n:'Jackson Heights',b:'Queens'},'11372':{n:'Jackson Heights',b:'Queens'},
+  '11373':{n:'Jackson Heights',b:'Queens'},'11374':{n:'Forest Hills',b:'Queens'},
+  '11375':{n:'Forest Hills',b:'Queens'},'11378':{n:'Astoria',b:'Queens'},
+  '11379':{n:'Forest Hills',b:'Queens'},'11385':{n:'Jackson Heights',b:'Queens'},
+  '11418':{n:'Jamaica',b:'Queens'},'11419':{n:'Jamaica',b:'Queens'},
+  '11420':{n:'Jamaica',b:'Queens'},'11421':{n:'Jamaica',b:'Queens'},
+  '11422':{n:'Jamaica',b:'Queens'},'11423':{n:'Jamaica',b:'Queens'},
+  '11432':{n:'Jamaica',b:'Queens'},'11433':{n:'Jamaica',b:'Queens'},
+  '11434':{n:'Jamaica',b:'Queens'},'11435':{n:'Jamaica',b:'Queens'},
+  '11436':{n:'Jamaica',b:'Queens'},
+  // ── MANHATTAN ──
+  '10001':{n:"Hell's Kitchen",b:'Manhattan'},'10002':{n:'Lower East Side',b:'Manhattan'},
+  '10003':{n:'Lower East Side',b:'Manhattan'},'10004':{n:'Lower East Side',b:'Manhattan'},
+  '10005':{n:'Lower East Side',b:'Manhattan'},'10006':{n:'Lower East Side',b:'Manhattan'},
+  '10007':{n:'Lower East Side',b:'Manhattan'},'10009':{n:'Lower East Side',b:'Manhattan'},
+  '10010':{n:'Lower East Side',b:'Manhattan'},'10011':{n:"Hell's Kitchen",b:'Manhattan'},
+  '10012':{n:'Lower East Side',b:'Manhattan'},'10013':{n:'Lower East Side',b:'Manhattan'},
+  '10014':{n:'Lower East Side',b:'Manhattan'},'10019':{n:"Hell's Kitchen",b:'Manhattan'},
+  '10020':{n:'Upper East Side',b:'Manhattan'},'10021':{n:'Upper East Side',b:'Manhattan'},
+  '10022':{n:'Upper East Side',b:'Manhattan'},'10023':{n:'Upper East Side',b:'Manhattan'},
+  '10024':{n:'Upper East Side',b:'Manhattan'},'10025':{n:'Harlem',b:'Manhattan'},
+  '10026':{n:'Harlem',b:'Manhattan'},'10027':{n:'Harlem',b:'Manhattan'},
+  '10028':{n:'Upper East Side',b:'Manhattan'},'10029':{n:'Harlem',b:'Manhattan'},
+  '10030':{n:'Harlem',b:'Manhattan'},'10031':{n:'Washington Heights',b:'Manhattan'},
+  '10032':{n:'Washington Heights',b:'Manhattan'},'10033':{n:'Washington Heights',b:'Manhattan'},
+  '10034':{n:'Washington Heights',b:'Manhattan'},'10035':{n:'Harlem',b:'Manhattan'},
+  '10036':{n:"Hell's Kitchen",b:'Manhattan'},'10037':{n:'Harlem',b:'Manhattan'},
+  '10038':{n:'Lower East Side',b:'Manhattan'},'10039':{n:'Harlem',b:'Manhattan'},
+  '10040':{n:'Washington Heights',b:'Manhattan'},
+  // ── STATEN ISLAND ──
+  '10301':{n:'St. George',b:'Staten Island'},'10302':{n:'St. George',b:'Staten Island'},
+  '10303':{n:'St. George',b:'Staten Island'},'10304':{n:'St. George',b:'Staten Island'},
+  '10305':{n:'St. George',b:'Staten Island'},'10306':{n:'Great Kills',b:'Staten Island'},
+  '10307':{n:'Great Kills',b:'Staten Island'},'10308':{n:'Great Kills',b:'Staten Island'},
+  '10309':{n:'Great Kills',b:'Staten Island'},'10310':{n:'St. George',b:'Staten Island'},
+  '10312':{n:'Great Kills',b:'Staten Island'},'10314':{n:'St. George',b:'Staten Island'},
+};
+
+const BOROUGH_DEFAULTS = {
+  'Bronx':'South Bronx', 'Brooklyn':'Bedford-Stuyvesant',
+  'Queens':'Jackson Heights', 'Manhattan':'Harlem', 'Staten Island':'St. George'
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// UPLOAD MANAGER
+// ═══════════════════════════════════════════════════════════════════
+class UploadManager {
+  constructor(dataService, onUploadComplete) {
+    this.ds = dataService;
+    this.onComplete = onUploadComplete;
+    this.file = null;
+    this.lean = null;
+    this.issue = null;
+    this.parsedRecords = [];
+    this.currentStep = 1;
+    this.init();
+  }
+
+  init() {
+    // Open/close
+    document.getElementById('upload-btn').addEventListener('click', () => this.openModal());
+    document.getElementById('modal-close').addEventListener('click', () => this.closeModal());
+    document.getElementById('modal-cancel').addEventListener('click', () => this.closeModal());
+    document.getElementById('modal-back').addEventListener('click', () => this.goStep(1));
+    document.getElementById('modal-next').addEventListener('click', () => this.handleNext());
+
+    // File input
+    const dz = document.getElementById('drop-zone');
+    const fi = document.getElementById('file-input');
+    dz.addEventListener('click', e => { if(e.target.tagName!=='LABEL') fi.click(); });
+    fi.addEventListener('change', () => { if(fi.files[0]) this.setFile(fi.files[0]); });
+    dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+    dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+    dz.addEventListener('drop', e => {
+      e.preventDefault(); dz.classList.remove('drag-over');
+      if(e.dataTransfer.files[0]) this.setFile(e.dataTransfer.files[0]);
+    });
+
+    // Lean buttons
+    document.querySelectorAll('.lean-opt').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.lean-opt').forEach(b => b.classList.remove('sel'));
+        btn.classList.add('sel');
+        this.lean = btn.dataset.lean;
+        this.checkStep1Ready();
+      });
+    });
+
+    // Issue select
+    document.getElementById('issue-sel').addEventListener('change', e => {
+      const txt = document.getElementById('issue-txt');
+      if(e.target.value === '__custom__') {
+        txt.style.display = 'block'; txt.focus(); this.issue = null;
+      } else {
+        txt.style.display = 'none'; this.issue = e.target.value || null;
+      }
+      this.checkStep1Ready();
+    });
+    document.getElementById('issue-txt').addEventListener('input', e => {
+      this.issue = e.target.value.trim() || null;
+      this.checkStep1Ready();
+    });
+  }
+
+  setFile(f) {
+    this.file = f;
+    const dz = document.getElementById('drop-zone');
+    dz.classList.add('has-file');
+    const fn = document.getElementById('dz-filename');
+    fn.textContent = `✓ ${f.name} (${(f.size/1024).toFixed(1)} KB)`;
+    fn.style.display = 'block';
+    document.querySelector('.dz-text').textContent = 'File ready';
+    this.checkStep1Ready();
+  }
+
+  checkStep1Ready() {
+    const ok = this.file && this.lean && this.issue;
+    document.getElementById('modal-next').disabled = !ok;
+    document.getElementById('modal-hint').textContent = ok
+      ? `${this.file.name} · ${this.lean} · ${this.issue}`
+      : 'Select a file, lean, and issue to continue';
+  }
+
+  openModal() {
+    this.reset();
+    document.getElementById('upload-modal').classList.add('open');
+  }
+
+  closeModal() {
+    document.getElementById('upload-modal').classList.remove('open');
+  }
+
+  reset() {
+    this.file = null; this.lean = null; this.issue = null;
+    this.parsedRecords = []; this.currentStep = 1;
+    document.getElementById('dz-filename').style.display = 'none';
+    document.getElementById('drop-zone').classList.remove('has-file','drag-over');
+    document.querySelector('.dz-text').textContent = 'Drop your CSV or Excel file here';
+    document.getElementById('file-input').value = '';
+    document.querySelectorAll('.lean-opt').forEach(b => b.classList.remove('sel'));
+    document.getElementById('issue-sel').value = '';
+    document.getElementById('issue-txt').style.display = 'none';
+    document.getElementById('issue-txt').value = '';
+    document.getElementById('modal-next').disabled = true;
+    document.getElementById('modal-next').textContent = 'Preview →';
+    document.getElementById('modal-back').style.display = 'none';
+    document.getElementById('modal-hint').textContent = 'Select a file, lean, and issue to continue';
+    this.goStep(1, true);
+  }
+
+  goStep(n, silent = false) {
+    this.currentStep = n;
+    document.querySelectorAll('.modal-step').forEach(s => s.classList.remove('active'));
+    document.getElementById(`mstep-${n}`).classList.add('active');
+    // Step dots
+    ['sd1','sd2','sd3'].forEach((id, i) => {
+      const d = document.getElementById(id);
+      d.className = 'modal-step-dot';
+      if(i+1 < n) d.classList.add('done');
+      else if(i+1 === n) d.classList.add('active');
+    });
+    if(n === 1) {
+      document.getElementById('modal-back').style.display = 'none';
+      document.getElementById('modal-next').style.display = '';
+      document.getElementById('modal-cancel').style.display = '';
+      document.getElementById('modal-next').textContent = 'Preview →';
+    } else if(n === 2) {
+      document.getElementById('modal-back').style.display = '';
+      document.getElementById('modal-next').textContent = 'Upload to Database →';
+      document.getElementById('modal-next').disabled = false;
+    } else if(n === 3) {
+      document.getElementById('modal-back').style.display = 'none';
+      document.getElementById('modal-next').style.display = 'none';
+      document.getElementById('modal-cancel').textContent = 'Close';
+    }
+  }
+
+  async handleNext() {
+    if(this.currentStep === 1) {
+      document.getElementById('modal-next').disabled = true;
+      document.getElementById('modal-next').textContent = 'Parsing...';
+      await this.parseAndPreview();
+    } else if(this.currentStep === 2) {
+      this.goStep(3);
+      await this.uploadAll();
+    }
+  }
+
+  // ── PARSING ──
+  async parseAndPreview() {
+    try {
+      const rows = await this.readFile(this.file);
+      this.parsedRecords = this.processRows(rows);
+      this.renderPreview();
+      this.goStep(2);
+    } catch(e) {
+      alert('Error parsing file: ' + e.message);
+      document.getElementById('modal-next').disabled = false;
+      document.getElementById('modal-next').textContent = 'Preview →';
+    }
+  }
+
+  readFile(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      const ext = file.name.split('.').pop().toLowerCase();
+      if(ext === 'csv') {
+        reader.onload = e => resolve(this.parseCSV(e.target.result));
+        reader.onerror = reject;
+        reader.readAsText(file);
+      } else {
+        reader.onload = e => {
+          try {
+            const wb = XLSX.read(new Uint8Array(e.target.result), {type:'array'});
+            const ws = wb.Sheets[wb.SheetNames[0]];
+            const data = XLSX.utils.sheet_to_csv(ws);
+            resolve(this.parseCSV(data));
+          } catch(err) { reject(err); }
+        };
+        reader.onerror = reject;
+        reader.readAsArrayBuffer(file);
+      }
+    });
+  }
+
+  parseCSV(text) {
+    const lines = text.split(/\r?\n/);
+    const rows = [];
+    for(const line of lines) {
+      if(!line.trim()) continue;
+      // Handle quoted fields
+      const parts = [];
+      let cur = '', inQ = false;
+      for(let i=0; i<line.length; i++){
+        if(line[i]==='"') { inQ=!inQ; }
+        else if(line[i]===',' && !inQ) { parts.push(cur.trim()); cur=''; }
+        else { cur+=line[i]; }
+      }
+      parts.push(cur.trim());
+      rows.push(parts);
+    }
+    return rows;
+  }
+
+  processRows(rows) {
+    const records = [];
+    let skipped = 0;
+    for(const row of rows) {
+      // Skip header-like rows
+      const first = (row[0]||'').toLowerCase().trim();
+      if(first === 'name' || first === '#' || first === 'no') continue;
+      // Get name and address
+      let name = (row[0]||'').replace(/\n/g,' ').trim();
+      let address = (row[1]||'').replace(/\n/g,' ').trim();
+      // Some files have number prefix in first col
+      if(/^\d+$/.test(name) && row[1]) { name = row[1]; address = row[2]||''; }
+      if(!name && !address) { skipped++; continue; }
+      if(!name) { skipped++; continue; }
+      const loc = this.inferLocation(address);
+      records.push({ name, address, neighborhood: loc.n, borough: loc.b, status: loc.status });
+    }
+    return records;
+  }
+
+  inferLocation(addr) {
+    const a = (addr||'').toUpperCase();
+    // 1. Try zip code extraction (5 digits)
+    const zips = a.match(/\b\d{5}\b/g) || [];
+    for(const z of zips) {
+      if(ZIP_MAP[z]) return { ...ZIP_MAP[z], status: 'ok' };
+    }
+    // 2. Borough text detection
+    let borough = null;
+    if(/\bBRONX\b|\bBX\b/.test(a)) borough = 'Bronx';
+    else if(/BROOKLYN|BKLYN|\bBK\b/.test(a)) borough = 'Brooklyn';
+    else if(/\bQUEENS\b|\bQNZ\b/.test(a)) borough = 'Queens';
+    else if(/STATEN ISLAND|\bS\.?I\.\b/.test(a)) borough = 'Staten Island';
+    else if(/MANHATTAN|\bMN\b|NEW YORK,? NY\b/.test(a)) borough = 'Manhattan';
+    if(borough) {
+      return { n: BOROUGH_DEFAULTS[borough], b: borough, status: 'partial' };
+    }
+    return { n: 'Bedford-Stuyvesant', b: 'Brooklyn', status: 'skip' };
+  }
+
+  renderPreview() {
+    const ok = this.parsedRecords.filter(r=>r.status==='ok').length;
+    const partial = this.parsedRecords.filter(r=>r.status==='partial').length;
+    const skip = this.parsedRecords.filter(r=>r.status==='skip').length;
+    const uploadable = ok + partial;
+
+    document.getElementById('preview-stats').innerHTML = `
+      <div class="pstat"><div class="pval">${this.parsedRecords.length}</div><div class="plbl">Records parsed</div></div>
+      <div class="pstat"><div class="pval" style="color:#22C55E">${ok}</div><div class="plbl">Neighborhood matched</div></div>
+      <div class="pstat"><div class="pval" style="color:#FFB800">${partial}</div><div class="plbl">Borough only</div></div>
+      <div class="pstat"><div class="pval" style="color:#6B7280">${skip}</div><div class="plbl">Unidentified</div></div>
+      <div class="pstat"><div class="pval" style="color:var(--blue)">${uploadable}</div><div class="plbl">Will be uploaded</div></div>
+    `;
+
+    const tbody = document.getElementById('preview-tbody');
+    const preview = this.parsedRecords.slice(0, 200);
+    tbody.innerHTML = preview.map((r, i) => `
+      <tr class="row-${r.status}">
+        <td style="color:var(--muted)">${i+1}</td>
+        <td>${r.name||'-'}</td>
+        <td>${r.neighborhood}</td>
+        <td>${r.borough}</td>
+        <td class="status-cell">${r.status==='ok'?'🟢 Matched':r.status==='partial'?'🟡 Borough':'⚫ Skipped'}</td>
+      </tr>`).join('');
+    if(this.parsedRecords.length > 200) {
+      tbody.innerHTML += `<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:8px">… and ${this.parsedRecords.length-200} more rows</td></tr>`;
+    }
+  }
+
+  // ── UPLOAD ──
+  async uploadAll() {
+    const toUpload = this.parsedRecords.filter(r => r.status !== 'skip');
+    if(!toUpload.length) {
+      document.getElementById('upload-msg').textContent = 'No uploadable records found.';
+      return;
+    }
+    const progressFill = document.getElementById('progress-fill');
+    const uploadMsg = document.getElementById('upload-msg');
+    const ring = document.getElementById('progress-ring');
+
+    const CHUNK = 500;
+    let uploaded = 0;
+    let failed = 0;
+    const now = new Date();
+
+    ring.textContent = '⬆️';
+    uploadMsg.textContent = `Uploading ${toUpload.length} records to Supabase...`;
+
+    for(let i=0; i<toUpload.length; i+=CHUNK) {
+      const chunk = toUpload.slice(i, i+CHUNK);
+      const payload = chunk.map(r => ({
+        neighborhood: r.neighborhood,
+        borough: r.borough,
+        political_lean: this.lean,
+        issue_category: this.issue,
+        petition_type: 'uploaded',
+        // Spread created_at over last 90 days for realistic recency
+        created_at: new Date(now - Math.random()*90*86400000).toISOString()
+      }));
+
+      try {
+        const resp = await fetch(`${CONFIG.supabaseUrl}/rest/v1/petitions`, {
+          method: 'POST',
+          headers: {
+            'apikey': CONFIG.supabaseKey,
+            'Authorization': `Bearer ${CONFIG.supabaseKey}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=minimal'
+          },
+          body: JSON.stringify(payload)
+        });
+        if(resp.ok || resp.status === 201) { uploaded += chunk.length; }
+        else { failed += chunk.length; console.warn('Chunk failed:', resp.status, await resp.text()); }
+      } catch(e) { failed += chunk.length; console.error(e); }
+
+      const pct = Math.round((Math.min(i+CHUNK, toUpload.length)/toUpload.length)*100);
+      progressFill.style.width = pct + '%';
+      uploadMsg.textContent = `Uploading… ${Math.min(i+CHUNK, toUpload.length)} / ${toUpload.length}`;
+    }
+
+    // Show result
+    ring.textContent = uploaded > 0 ? '✅' : '❌';
+    document.getElementById('upload-progress-wrap').innerHTML = `
+      <div style="font-size:48px">${uploaded>0?'✅':'❌'}</div>
+      <div class="success-banner" style="width:100%">
+        <div class="sb-num">${uploaded.toLocaleString()}</div>
+        <div class="sb-lbl">petition signatures uploaded to Supabase</div>
+        ${failed>0?`<div style="color:#F87171;font-size:11px;margin-top:4px">${failed} records failed</div>`:''}
+      </div>
+      <div class="upload-msg">The map will refresh with the new data now.</div>
+    `;
+    document.getElementById('modal-cancel').textContent = 'Close';
+    document.getElementById('modal-hint').textContent = `Done! ${uploaded} records added.`;
+
+    if(uploaded > 0) {
+      setTimeout(() => this.onComplete(), 1200);
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// MAIN APP
+// ═══════════════════════════════════════════════════════════════════
+class App {
+  constructor(){
+    this.ds=new DataService();
+    this.panel=new PanelManager();
+    this.map=null;
+  }
+
+  async init(){
+    document.getElementById('loader-sub').textContent='Checking data connection...';
+    await this.ds.init();
+    document.getElementById('loader-sub').textContent='Loading map tiles...';
+
+    // Update status
+    const dot=document.getElementById('statusDot');
+    const txt=document.getElementById('statusText');
+    if(this.ds.isLive){
+      dot.classList.add('live');txt.textContent='Live Data';
+    }else{
+      dot.classList.add('demo');txt.textContent='Demo Data';
+    }
+
+    // Init map
+    this.map=new MapManager(this.ds,(name)=>this.onNeighborhoodClick(name));
+    await this.map.init();
+
+    // Upload manager — wires the ⬆ Upload button and handles CSV/Excel ingest
+    this.uploader = new UploadManager(this.ds, async () => {
+      await this.ds.init();            // reload data from Supabase
+      this.map.refresh(this.ds.data);  // re-colour map with new PES values
+    });
+
+    // Borough filter buttons
+    document.querySelectorAll('.btn-borough').forEach(btn=>{
+      btn.addEventListener('click',()=>{
+        document.querySelectorAll('.btn-borough').forEach(b=>b.classList.remove('active'));
+        btn.classList.add('active');
+        this.map.filterBorough(btn.dataset.borough);
+      });
+    });
+
+    // Hide loading overlay
+    setTimeout(()=>{
+      const overlay=document.getElementById('loading-overlay');
+      overlay.style.opacity='0';
+      setTimeout(()=>overlay.style.display='none',500);
+    },800);
+
+    // Hide hint after first click
+    document.getElementById('map').addEventListener('click',()=>{
+      document.getElementById('map-hint').classList.add('hidden');
+    },{once:true});
+  }
+
+  onNeighborhoodClick(name){
+    const nd=this.ds.getNeighborhoodData(name);
+    if(!nd)return;
+    this.map.setSelected(name);
+    this.panel.open(nd);
+  }
+}
+
+// ── BOOT ──
+window.addEventListener('load',()=>{new App().init();});
+</script>
+</body>
+</html>
