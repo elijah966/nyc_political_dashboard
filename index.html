@@ -59,6 +59,12 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:system-
 .status-dot{width:7px;height:7px;border-radius:50%;background:#6B7280;transition:background .4s;}
 .status-dot.live{background:#22C55E;box-shadow:0 0 6px #22C55E88;}
 .status-dot.demo{background:#FFB800;box-shadow:0 0 6px #FFB80088;}
+.layer-toggle{display:flex;gap:2px;background:var(--card2);border:1px solid var(--border);border-radius:22px;padding:3px;flex-shrink:0;}
+.layer-btn{background:transparent;border:none;color:var(--muted);padding:4px 11px;border-radius:18px;font-size:11px;font-weight:600;cursor:pointer;transition:all .2s;white-space:nowrap;}
+.layer-btn:hover{color:var(--text);}
+.layer-btn.active{background:var(--blue);color:#fff;}
+.layer-btn.active[data-layer="registration"]{background:#10B981;}
+#reg-banner{position:absolute;bottom:28px;left:50%;transform:translateX(-50%);background:rgba(16,185,129,.15);border:1px solid rgba(16,185,129,.4);color:#34D399;font-size:11px;padding:5px 14px;border-radius:20px;z-index:800;pointer-events:none;display:none;backdrop-filter:blur(4px);white-space:nowrap;}
 
 /* ── LAYOUT ── */
 #main{
@@ -394,6 +400,11 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:system-
 
   <button class="upload-btn" id="upload-btn">⬆ Upload Signatures</button>
 
+  <div class="layer-toggle" id="layer-toggle">
+    <button class="layer-btn active" data-layer="petition">📋 Petition Activity</button>
+    <button class="layer-btn" data-layer="registration">🗳️ Voter Registration</button>
+  </div>
+
   <div class="header-right">
     <div class="legend-wrap">
       <span class="legend-label" style="color:#818CF8">Progressive</span>
@@ -412,6 +423,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:system-
   <div id="map-container">
     <div id="map"></div>
     <div id="map-hint">Click a neighborhood to explore its political profile</div>
+    <div id="reg-banner">🗳️ Voter Registration Mode — NYC BOE Feb 2026 · Showing D/R enrollment balance</div>
   </div>
 
   <!-- Right Panel -->
@@ -465,6 +477,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:system-
         </div>
       </div>
       <div class="donut-legend" id="donut-legend"></div>
+      <div id="stat-registration"></div>
     </div>
 
     <!-- Tab: Key Issues -->
@@ -1114,6 +1127,7 @@ class MapManager {
     this.ds=dataService;this.onClick=onNeighborhoodClick;
     this.map=null;this.geoLayer=null;this.markerLayer=null;
     this.activeBorough='all';this.selectedName=null;
+    this.activeLayer='petition';
   }
 
   async init(){
@@ -1157,8 +1171,9 @@ class MapManager {
       style:(feature)=>{
         const nd=self.matchGeo(feature);
         if(!nd)return{fillColor:'#1A2540',fillOpacity:0.3,color:'#1E3050',weight:1};
+        const score=self.getScore(nd.name,nd.pes);
         return{
-          fillColor:pesColor(nd.pes),fillOpacity:0.7,
+          fillColor:pesColor(score),fillOpacity:0.7,
           color:'rgba(255,255,255,0.15)',weight:1
         };
       },
@@ -1166,11 +1181,15 @@ class MapManager {
         const nd=self.matchGeo(feature);
         if(!nd)return;
         const er=engagementRate(nd);
-        const lean=pesLabel(nd.pes);
+        const score=self.getScore(nd.name,nd.pes);
+        const lean=pesLabel(score);
+        const isReg=self.activeLayer==='registration';
+        const regData=ORGANIC_LEAN[nd.name];
+        const scoreLabel=isReg?(regData?`D ${regData.dem}% · R ${regData.rep}%`:`Score ${score>0?'+':''}${score}`):`PES ${nd.pes>0?'+':''}${nd.pes}`;
         layer.bindTooltip(`
           <div class="tooltip-inner">
             <div class="tooltip-name">${nd.name}</div>
-            <div class="tooltip-pes" style="color:${pesColor(nd.pes)}">${nd.pes>0?'+':''}${nd.pes}</div>
+            <div class="tooltip-pes" style="color:${pesColor(score)}">${scoreLabel}</div>
             <div class="tooltip-meta">${nd.borough} · ${lean}</div>
             <div class="tooltip-pills">
               <span class="tooltip-pill" style="background:rgba(30,111,255,.2);color:#93C5FD">ER: ${er}/1k</span>
@@ -1202,8 +1221,12 @@ class MapManager {
     this.markerLayer=L.layerGroup().addTo(this.map);
     const data=this.ds.filterByBorough(this.activeBorough);
     data.forEach(nd=>{
-      const color=pesColor(nd.pes);
+      const score=this.getScore(nd.name,nd.pes);
+      const color=pesColor(score);
       const er=engagementRate(nd);
+      const isReg=this.activeLayer==='registration';
+      const regData=ORGANIC_LEAN[nd.name];
+      const scoreLabel=isReg?(regData?`D ${regData.dem}% · R ${regData.rep}%`:`${score>0?'+':''}${score}`):`${nd.pes>0?'+':''}${nd.pes}`;
       const size=Math.max(12,Math.min(28,nd.totalPetitions/80));
       const icon=L.divIcon({
         className:'',
@@ -1223,8 +1246,8 @@ class MapManager {
       marker.bindTooltip(`
         <div class="tooltip-inner">
           <div class="tooltip-name">${nd.name}</div>
-          <div class="tooltip-pes" style="color:${color}">${nd.pes>0?'+':''}${nd.pes}</div>
-          <div class="tooltip-meta">${nd.borough} · ${pesLabel(nd.pes)}</div>
+          <div class="tooltip-pes" style="color:${color}">${scoreLabel}</div>
+          <div class="tooltip-meta">${nd.borough} · ${pesLabel(score)}</div>
           <div class="tooltip-pills">
             <span class="tooltip-pill" style="background:rgba(30,111,255,.2);color:#93C5FD">ER: ${er}/1k</span>
             <span class="tooltip-pill" style="background:rgba(255,184,0,.15);color:#FCD34D">${fmtNum(nd.totalPetitions)} petitions</span>
@@ -1269,6 +1292,18 @@ class MapManager {
     } else {
       this.renderMarkers();
     }
+  }
+
+  setLayer(layer){
+    this.activeLayer=layer;
+    this.refresh();
+  }
+
+  getScore(name,pesScore){
+    if(this.activeLayer==='registration'){
+      return ORGANIC_LEAN[name]?.score??pesScore;
+    }
+    return pesScore;
   }
 }
 
@@ -1333,6 +1368,25 @@ class PanelManager {
     document.getElementById('stat-er').textContent=engagementRate(nd);
     document.getElementById('stat-er').style.color='#60A5FA';
     this.renderDonut(nd);
+    const regEl=document.getElementById('stat-registration');
+    if(regEl){
+      const reg=ORGANIC_LEAN[nd.name];
+      if(reg){
+        regEl.innerHTML=`
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:1px solid var(--border);margin-top:8px;">
+            <span style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.5px;">🗳️ Voter Registration</span>
+            <span style="font-size:12px;font-weight:700;">
+              <span style="color:#3B82F6">D ${reg.dem}%</span>
+              <span style="color:var(--muted);margin:0 4px">·</span>
+              <span style="color:#DC2626">R ${reg.rep}%</span>
+              <span style="color:var(--muted);margin:0 4px">·</span>
+              <span style="color:var(--muted)">Other ${reg.other}%</span>
+            </span>
+          </div>
+          <div style="font-size:10px;color:var(--muted);padding-bottom:4px;">Source: NYC BOE Feb 2026 · ${reg.source}</div>
+        `;
+      }else{regEl.innerHTML='';}
+    }
   }
 
   renderGauge(pes){
@@ -1591,6 +1645,39 @@ const ZIP_MAP = {
 const BOROUGH_DEFAULTS = {
   'Bronx':'South Bronx', 'Brooklyn':'Bedford-Stuyvesant',
   'Queens':'Jackson Heights', 'Manhattan':'Harlem', 'Staten Island':'St. George'
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// ORGANIC LEAN — NYC BOE Voter Registration Data (Feb 2026)
+// Score = ((R_reg - D_reg) / (D_reg + R_reg)) * 100
+// Negative = Democrat-dominant, Positive = Republican-dominant
+// ═══════════════════════════════════════════════════════════════════
+const ORGANIC_LEAN = {
+  'Crown Heights':      { score:-87, dem:85, rep:5,  other:10, source:'AD-43/57' },
+  'Bedford-Stuyvesant': { score:-91, dem:88, rep:4,  other:8,  source:'AD-56/57' },
+  'Park Slope':         { score:-87, dem:87, rep:6,  other:7,  source:'AD-51/52' },
+  'Williamsburg':       { score:-70, dem:68, rep:12, other:20, source:'AD-50/53' },
+  'Borough Park':       { score:-32, dem:52, rep:27, other:21, source:'AD-48/49' },
+  'Bay Ridge':          { score:-35, dem:58, rep:28, other:14, source:'AD-46/47' },
+  'Bensonhurst':        { score:-48, dem:63, rep:22, other:15, source:'AD-46/48' },
+  'Flatbush':           { score:-86, dem:82, rep:6,  other:12, source:'AD-40/41' },
+  'Sheepshead Bay':     { score:-44, dem:62, rep:24, other:14, source:'AD-45/46' },
+  'Sunset Park':        { score:-79, dem:76, rep:9,  other:15, source:'AD-38/51' },
+  'Astoria':            { score:-67, dem:72, rep:14, other:14, source:'AD-22/36' },
+  'Jackson Heights':    { score:-77, dem:76, rep:10, other:14, source:'AD-34/39' },
+  'Flushing':           { score:-46, dem:62, rep:23, other:15, source:'AD-25/40' },
+  'Jamaica':            { score:-84, dem:81, rep:7,  other:12, source:'AD-28/31' },
+  'Forest Hills':       { score:-57, dem:69, rep:19, other:12, source:'AD-23/26' },
+  'Howard Beach':       { score:-28, dem:57, rep:32, other:11, source:'AD-23/32' },
+  'Harlem':             { score:-94, dem:91, rep:3,  other:6,  source:'AD-68/70' },
+  'Upper East Side':    { score:-60, dem:73, rep:18, other:9,  source:'AD-73/76' },
+  'Washington Heights': { score:-89, dem:85, rep:5,  other:10, source:'AD-72/74' },
+  "Hell's Kitchen":     { score:-84, dem:80, rep:7,  other:13, source:'AD-67/75' },
+  'Lower East Side':    { score:-89, dem:83, rep:5,  other:12, source:'AD-64/65' },
+  'South Bronx':        { score:-92, dem:91, rep:4,  other:5,  source:'AD-77/78/79' },
+  'Riverdale':          { score:-56, dem:70, rep:20, other:10, source:'AD-81/83' },
+  'St. George':         { score:-16, dem:52, rep:38, other:10, source:'AD-61/62' },
+  'Great Kills':        { score:+7,  dem:42, rep:48, other:10, source:'AD-60/63' },
 };
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1974,6 +2061,18 @@ class App {
         document.querySelectorAll('.btn-borough').forEach(b=>b.classList.remove('active'));
         btn.classList.add('active');
         this.map.filterBorough(btn.dataset.borough);
+      });
+    });
+
+    // Layer toggle
+    document.querySelectorAll('.layer-btn').forEach(btn=>{
+      btn.addEventListener('click',()=>{
+        document.querySelectorAll('.layer-btn').forEach(b=>b.classList.remove('active'));
+        btn.classList.add('active');
+        const layer=btn.dataset.layer;
+        const banner=document.getElementById('reg-banner');
+        if(layer==='registration'){banner.style.display='block';this.map.setLayer('registration');}
+        else{banner.style.display='none';this.map.setLayer('petition');}
       });
     });
 
