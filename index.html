@@ -1035,14 +1035,21 @@ class DataService {
   }
 
   async loadLiveData(){
-    // Fetch all petitions and compute PES per neighborhood
+    // Paginate fetches — Supabase REST caps at 1000 rows per request
     try{
-      const r=await fetch(
-        `${CONFIG.supabaseUrl}/rest/v1/petitions?select=neighborhood,borough,political_lean,issue_category,created_at&limit=10000`,
-        {headers:{"apikey":CONFIG.supabaseKey,"Authorization":`Bearer ${CONFIG.supabaseKey}`}}
-      );
-      if(!r.ok)return;
-      const rows=await r.json();
+      const PAGE=1000;
+      let rows=[];
+      for(let offset=0;;offset+=PAGE){
+        const r=await fetch(
+          `${CONFIG.supabaseUrl}/rest/v1/petitions?select=neighborhood,borough,political_lean,issue_category,created_at&limit=${PAGE}&offset=${offset}`,
+          {headers:{"apikey":CONFIG.supabaseKey,"Authorization":`Bearer ${CONFIG.supabaseKey}`}}
+        );
+        if(!r.ok)break;
+        const page=await r.json();
+        if(!Array.isArray(page)||page.length===0)break;
+        rows=rows.concat(page);
+        if(page.length<PAGE)break;
+      }
       // Group by neighborhood
       const groups={};
       for(const row of rows){
