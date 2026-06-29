@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>NYC Political Media Monitor</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+:root{
+  --bg:#0A1628;
+  --card:#111D35;
+  --card2:#162040;
+  --blue:#1E6FFF;
+  --gold:#FFB800;
+  --green:#10B981;
+  --red:#DC2626;
+  --purple:#7C3AED;
+  --text:#E2E8F0;
+  --muted:#A0AEC0;
+  --border:#1E3050;
+  --header-h:64px;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;}
+body{overflow-x:hidden;}
+
+/* ââ HEADER ââ */
+#header{
+  position:fixed;top:0;left:0;right:0;height:var(--header-h);
+  background:rgba(10,22,40,0.97);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:12px;padding:0 16px;z-index:1000;
+  backdrop-filter:blur(8px);
+}
+.header-brand{display:flex;align-items:center;gap:10px;flex-shrink:0;}
+.brand-text h1{font-size:14px;font-weight:700;}
+.brand-text p{font-size:11px;color:var(--muted);}
+.nav-link{
+  background:rgba(30,111,255,.15);border:1px solid rgba(30,111,255,.3);
+  color:#93C5FD;padding:5px 12px;border-radius:20px;font-size:11px;
+  font-weight:600;text-decoration:none;transition:all .2s;white-space:nowrap;
+}
+.nav-link:hover{background:rgba(30,111,255,.3);}
+.nav-link.active{background:var(--blue);color:#fff;border-color:var(--blue);}
+.header-spacer{flex:1;}
+.source-note{font-size:10px;color:var(--muted);text-align:right;line-height:1.4;}
+
+/* ââ LAYOUT ââ */
+#main{
+  padding-top:var(--header-h);
+  display:flex;height:100vh;overflow:hidden;
+}
+#left-col{
+  flex:1;display:flex;flex-direction:column;min-width:0;
+  border-right:1px solid var(--border);
+}
+#right-col{
+  width:400px;flex-shrink:0;display:flex;flex-direction:column;
+  background:var(--card);
+}
+
+/* ââ SEARCH BAR ââ */
+#search-bar{
+  padding:16px;background:var(--card2);
+  border-bottom:1px solid var(--border);flex-shrink:0;
+}
+.search-row{display:flex;gap:8px;margin-bottom:10px;}
+.search-input{
+  flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);
+  padding:8px 12px;border-radius:8px;font-size:13px;outline:none;
+  transition:border-color .2s;
+}
+.search-input:focus{border-color:var(--blue);}
+.search-input::placeholder{color:var(--muted);}
+.search-btn{
+  background:var(--blue);border:none;color:#fff;
+  padding:8px 18px;border-radius:8px;font-size:13px;font-weight:700;
+  cursor:pointer;white-space:nowrap;transition:all .2s;
+}
+.search-btn:hover{background:#1557cc;}
+.search-btn:disabled{background:#1E3050;color:var(--muted);cursor:not-allowed;}
+.filter-row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;}
+.filter-label{font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.5px;}
+.filter-btn{
+  background:transparent;border:1px solid var(--border);color:var(--muted);
+  padding:4px 10px;border-radius:16px;font-size:11px;cursor:pointer;transition:all .2s;
+}
+.filter-btn:hover{border-color:var(--blue);color:var(--text);}
+.filter-btn.active{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600;}
+.yt-key-row{display:flex;gap:6px;align-items:center;margin-top:8px;display:none;}
+.yt-key-row.show{display:flex;}
+.yt-key-input{
+  flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);
+  padding:6px 10px;border-radius:6px;font-size:11px;outline:none;
+}
+
+/* ââ TABS ââ */
+#source-tabs{
+  display:flex;gap:0;border-bottom:1px solid var(--border);
+  background:var(--card);flex-shrink:0;
+}
+.src-tab{
+  flex:1;padding:10px;font-size:12px;font-weight:600;color:var(--muted);
+  border:none;background:transparent;cursor:pointer;border-bottom:2px solid transparent;
+  transition:all .2s;
+}
+.src-tab.active{color:var(--blue);border-bottom-color:var(--blue);}
+.src-tab .tab-count{
+  background:var(--card2);border-radius:10px;padding:1px 7px;
+  font-size:10px;margin-left:5px;color:var(--muted);
+}
+.src-tab.active .tab-count{background:rgba(30,111,255,.2);color:var(--blue);}
+
+/* ââ RESULTS ââ */
+#results-area{flex:1;overflow-y:auto;padding:12px;}
+.results-status{
+  text-align:center;padding:40px 20px;color:var(--muted);
+}
+.results-status .big-icon{font-size:40px;margin-bottom:12px;}
+.results-status p{font-size:14px;margin-bottom:4px;}
+.results-status small{font-size:12px;color:#4B5563;}
+.spinner{
+  width:32px;height:32px;border:3px solid var(--border);
+  border-top-color:var(--blue);border-radius:50%;
+  animation:spin .8s linear infinite;margin:0 auto 12px;
+}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+/* ââ RESULT CARD ââ */
+.result-card{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:10px;padding:14px;margin-bottom:10px;
+  transition:border-color .2s;
+}
+.result-card:hover{border-color:#2D4A70;}
+.card-top{display:flex;align-items:flex-start;gap:10px;margin-bottom:8px;}
+.source-badge{
+  flex-shrink:0;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;
+  text-transform:uppercase;letter-spacing:.5px;
+}
+.badge-news{background:rgba(16,185,129,.15);color:#34D399;border:1px solid rgba(16,185,129,.3);}
+.badge-reddit{background:rgba(255,69,0,.15);color:#FF6B35;border:1px solid rgba(255,69,0,.3);}
+.badge-youtube{background:rgba(220,38,38,.15);color:#FCA5A5;border:1px solid rgba(220,38,38,.3);}
+.card-meta{flex:1;min-width:0;}
+.card-source-name{font-size:11px;color:var(--muted);margin-bottom:2px;}
+.card-date{font-size:10px;color:#4B5563;}
+.card-title{font-size:14px;font-weight:700;color:var(--text);margin-bottom:6px;line-height:1.4;}
+.card-snippet{font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:10px;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
+.card-actions{display:flex;gap:6px;}
+.btn-link{
+  flex:1;background:rgba(30,111,255,.1);border:1px solid rgba(30,111,255,.3);
+  color:#93C5FD;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:600;
+  cursor:pointer;text-decoration:none;display:inline-block;text-align:center;transition:all .2s;
+}
+.btn-link:hover{background:rgba(30,111,255,.25);}
+.btn-pin{
+  background:rgba(255,184,0,.1);border:1px solid rgba(255,184,0,.3);
+  color:#FCD34D;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:600;
+  cursor:pointer;transition:all .2s;white-space:nowrap;
+}
+.btn-pin:hover{background:rgba(255,184,0,.25);}
+.btn-pin.pinned{background:rgba(255,184,0,.2);color:var(--gold);}
+.subreddit-tag{font-size:10px;color:#60A5FA;margin-left:4px;}
+
+/* ââ RESEARCH BOARD (right col) ââ */
+#board-header{
+  padding:14px 16px;border-bottom:1px solid var(--border);flex-shrink:0;
+  display:flex;align-items:center;justify-content:space-between;
+}
+#board-header h2{font-size:14px;font-weight:700;}
+.board-actions{display:flex;gap:6px;}
+.btn-export{
+  background:var(--green);border:none;color:#fff;
+  padding:5px 12px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;
+}
+.btn-clear-all{
+  background:transparent;border:1px solid var(--border);color:var(--muted);
+  padding:5px 10px;border-radius:6px;font-size:11px;cursor:pointer;
+}
+#board-subject{
+  padding:10px 16px;border-bottom:1px solid var(--border);flex-shrink:0;
+}
+#subject-input{
+  width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);
+  padding:7px 10px;border-radius:6px;font-size:12px;outline:none;
+}
+#subject-input::placeholder{color:var(--muted);}
+#subject-input:focus{border-color:var(--blue);}
+#board-items{flex:1;overflow-y:auto;padding:10px;}
+.board-empty{text-align:center;padding:40px 20px;color:var(--muted);}
+.board-empty .icon{font-size:32px;margin-bottom:10px;}
+.board-empty p{font-size:13px;}
+
+/* ââ PINNED ITEM ââ */
+.pinned-item{
+  background:var(--card2);border:1px solid var(--border);
+  border-radius:8px;padding:12px;margin-bottom:8px;
+}
+.pinned-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px;}
+.pinned-title{font-size:12px;font-weight:700;color:var(--text);line-height:1.3;flex:1;}
+.btn-unpin{
+  background:transparent;border:none;color:#4B5563;cursor:pointer;
+  font-size:14px;padding:0;flex-shrink:0;transition:color .2s;
+}
+.btn-unpin:hover{color:#EF4444;}
+.pinned-meta{font-size:10px;color:var(--muted);margin-bottom:8px;}
+.pinned-snippet{font-size:11px;color:var(--muted);margin-bottom:8px;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+.pinned-note{
+  width:100%;background:var(--bg);border:1px solid var(--border);
+  color:var(--text);padding:6px 8px;border-radius:5px;font-size:11px;
+  resize:none;outline:none;font-family:inherit;
+}
+.pinned-note::placeholder{color:#4B5563;}
+.pinned-note:focus{border-color:var(--blue);}
+.pinned-link{
+  display:inline-block;font-size:10px;color:#60A5FA;text-decoration:none;margin-top:5px;
+}
+.pinned-link:hover{text-decoration:underline;}
+.pinned-date-added{font-size:9px;color:#374151;margin-top:4px;}
+
+/* ââ SCROLLBARS ââ */
+::-webkit-scrollbar{width:5px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+
+/* ââ LIMIT NOTICE ââ */
+.limit-notice{
+  background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);
+  color:#FCD34D;font-size:11px;padding:8px 12px;border-radius:6px;
+  margin-bottom:10px;line-height:1.5;
+}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header id="header">
+  <div class="header-brand">
+    <div style="font-size:22px">ð¡</div>
+    <div class="brand-text">
+      <h1>NYC Political Media Monitor</h1>
+      <p>News Â· Public Discussion Â· Opposition Research</p>
+    </div>
+  </div>
+  <div style="display:flex;gap:8px;margin-left:16px;">
+    <a href="index.html" class="nav-link">ðºï¸ Back to Dashboard</a>
+    <a href="media_monitor.html" class="nav-link active">ð¡ Media Monitor</a>
+  </div>
+  <div class="header-spacer"></div>
+  <div class="source-note">
+    Sources: Google News Â· Reddit<br>
+    Twitter/Facebook require paid API access
+  </div>
+</header>
+
+<!-- Main -->
+<div id="main">
+
+  <!-- LEFT: Search + Results -->
+  <div id="left-col">
+
+    <!-- Search Bar -->
+    <div id="search-bar">
+      <div class="search-row">
+        <input class="search-input" id="input-person" placeholder="Person or organization (e.g. Eric Adams, NYC Council)" style="max-width:260px;"/>
+        <input class="search-input" id="input-topic" placeholder="Topic or keywords (e.g. housing, corruption, campaign finance)"/>
+        <button class="search-btn" id="search-btn" onclick="runSearch()">Search</button>
+      </div>
+      <div class="filter-row">
+        <span class="filter-label">Sources:</span>
+        <button class="filter-btn active" data-src="all" onclick="setSource(this)">All</button>
+        <button class="filter-btn" data-src="news" onclick="setSource(this)">ð° News</button>
+        <button class="filter-btn" data-src="reddit" onclick="setSource(this)">ð¬ Reddit</button>
+        <button class="filter-btn" data-src="youtube" onclick="setSource(this, true)">â¶ï¸ YouTube</button>
+        <span style="flex:1"></span>
+        <span class="filter-label">Sort:</span>
+        <button class="filter-btn active" data-sort="recent" onclick="setSort(this)">Recent</button>
+        <button class="filter-btn" data-sort="relevant" onclick="setSort(this)">Relevant</button>
+      </div>
+      <div class="yt-key-row" id="yt-key-row">
+        <span style="font-size:11px;color:var(--muted);white-space:nowrap;">YouTube API Key;</span>
+        <input class="yt-key-input" id="yt-api-key" placeholder="Paste your free Google API key here (optional)"/>
+        <a href="https://console.developers.google.com/" target="_blank" style="font-size:10px;color:#60A5FA;white-space:nowrap;">Get free key â</a>
+      </div>
+    </div>
+
+    <!-- Source Tabs -->
+    <div id="source-tabs">
+      <button class="src-tab active" data-tab="all" onclick="switchTab(this)">All Results <span class="tab-count" id="count-all">0</span></button>
+      <button class="src-tab" data-tab="news" onclick="switchTab(this)">News <span class="tab-count" id="count-news">0</span></button>
+      <button class="src-tab" data-tab="reddit" onclick="switchTab(this)">Reddit <span class="tab-count" id="count-reddit">0</span></button>
+      <button class="src-tab" data-tab="youtube" onclick="switchTab(this)">YouTube <span class="tab-count" id="count-youtube">0</span></button>
+    </div>
+
+    <!-- Results -->
+    <div id="results-area">
+      <div class="results-status">
+        <div class="big-icon">ð</div>
+        <p>Enter a name and topic above to start monitoring</p>
+        <small>Searches live news articles and public discussion threads</small>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: Research Board -->
+  <div id="right-col">
+    <div id="board-header">
+      <div>
+        <h2>ð Research Board</h2>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;">Pin items to build your file</div>
+      </div>
+      <div class="board-actions">
+        <button class="btn-export" onclick="exportBoard()">Export</button>
+        <button class="btn-clear-all" onclick="clearBoard()">Clear</button>
+      </div>
+    </div>
+    <div id="board-subject">
+      <input id="subject-input" placeholder="Research subject / case name (e.g. Adams Housing Scandal)"/>
+    </div>
+    <div id="board-items">
+      <div class="board-empty">
+        <div class="icon">ð</div>
+        <p>Pin results from your search<br>to build an opposition file</p>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ââ STATE ââ
+let allResults = [];
+let pinnedItems = [];
+let activeSource = 'all';
+let activeTab = 'all';
+let activeSort = 'recent';
+let searchQuery = '';
+let isSearching = false;
+
+const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
+
+// ââ SOURCE FILTER ââ
+function setSource(btn, showYT) {
+  document.querySelectorAll('.filter-btn[data-src]').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  activeSource = btn.dataset.src;
+  const ytRow = document.getElementById('yt-key-row');
+  ytRow.classList.toggle('show', showYT === true || activeSource === 'youtube' || activeSource === 'all');
+}
+
+function setSort(btn) {
+  document.querySelectorAll('.filter-btn[data-sort]').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  activeSort = btn.dataset.sort;
+}
+
+function switchTab(btn) {
+  document.querySelectorAll('.src-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  activeTab = btn.dataset.tab;
+  renderResults();
+}
+
+// ââ SEARCH ââ
+async function runSearch() {
+  const person = document.getElementById('input-person').value.trim();
+  const topic = document.getElementById('input-topic').value.trim();
+  if (!person && !topic) { alert('Please enter a person or topic to search.'); return; }
+  if (isSearching) return;
+
+  isSearching = true;
+  const btn = document.getElementById('search-btn');
+  btn.disabled = true;
+  btn.textContent = 'Searching...';
+  allResults = [];
+  searchQuery = [person, topic].filter(Boolean).join(' ');
+
+  document.getElementById('results-area').innerHTML = `
+    <div class="results-status">
+      <div class="spinner"></div>
+      <p>Searching news and public discussions...</p>
+      <small>This may take a few seconds</small>
+    </div>`;
+
+  updateCounts();
+
+  const searches = [];
+  if (activeSource === 'all' || activeSource === 'news') searches.push(fetchNews(searchQuery));
+  if (activeSource === 'all' || activeSource === 'reddit') searches.push(fetchReddit(searchQuery));
+  if (activeSource === 'youtube' || activeSource === 'all') {
+    const key = document.getElementById('yt-api-key').value.trim();
+    if (key) searches.push(fetchYouTube(searchQuery, key));
+  }
+
+  const results = await Promise.allSettled(searches);
+  results.forEach(r => { if (r.status === 'fulfilled') allResults.push(...r.value); });
+
+  // Sort
+  if (activeSort === 'recent') {
+    allResults.sort((a, b) => new Date(b.date) - new Date(a.date));
+  }
+
+  isSearching = false;
+  btn.disabled = false;
+  btn.textContent = 'Search';
+  updateCounts();
+  renderResults();
+}
+
+// ââ FETCH NEWS (Google News RSS via CORS proxy) ââ
+async function fetchNews(query) {
+  try {
+    const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=en-US&gl=US&ceid=US:en`;
+    const proxyUrl = CORS_PROXY + encodeURIComponent(rssUrl);
+    const resp = await fetch(proxyUrl, { signal: AbortSignal.timeout(12000) });
+    if (!resp.ok) throw new Error('proxy error');
+    const text = await resp.text();
+    const parser = new DOMParser();
+    const xml = parser.parseFromString(text, 'text/xml');
+    const items = [...xml.querySelectorAll('item')].slice(0, 30);
+    return items.map(item => {
+      const title = item.querySelector('title')?.textContent || '';
+      const link = item.querySelector('link')?.textContent || item.querySelector('link')?.getAttribute('href') || '';
+      const desc = item.querySelector('description')?.textContent || '';
+      const pubDate = item.querySelector('pubDate')?.textContent || '';
+      const source = item.querySelector('source')?.textContent || extractDomain(link);
+      // Strip HTML from description
+      const cleanDesc = desc.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 250);
+      return {
+        id: 'news_' + Math.random().toString(36).slice(2),
+        type: 'news',
+        title: title.replace(/\s*-\s*[^-]+$/, '').trim(),
+        url: link,
+        snippet: cleanDesc,
+        source,
+        date: pubDate ? new Date(pubDate).toISOString() : new Date().toISOString(),
+        dateDisplay: pubDate ? formatDate(new Date(pubDate)) : 'Unknown date',
+        sub: null,
+      };
+    }).filter(r => r.title && r.url);
+  } catch(e) {
+    console.warn('News fetch error:', e);
+    return [];
+  }
+}
+
+// ââ FETCH REDDIT ââ
+async function fetchReddit(query) {
+  try {
+    const url = `https://www.reddit.com/search.json?q=${encodeURIComponent(query)}&sort=new&limit=30&type=link&t=year`;
+    const resp = await fetch(url, {
+      headers: { 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(10000)
+    });
+    if (!resp.ok) throw new Error('reddit error');
+    const json = await resp.json();
+    const posts = json?.data?.children || [];
+    return posts.map(p => {
+      const d = p.data;
+      return {
+        id: 'reddit_' + d.id,
+        type: 'reddit',
+        title: d.title,
+        url: d.url || `https://reddit.com${d.permalink}`,
+        snippet: (d.selftext || '').slice(0, 250) || `Posted in r/${d.subreddit} Â· ${d.score} upvotes Â· ${d.num_comments} comments`,
+        source: `r/${d.subreddit}`,
+        date: new Date(d.created_utc * 1000).toISOString(),
+        dateDisplay: formatDate(new Date(d.created_utc * 1000)),
+        sub: d.subreddit,
+        author: d.author,
+        redditLink: `https://reddit.com${d.permalink}`,
+      };
+    });
+  } catch(e) {
+    console.warn('Reddit fetch error:', e);
+    // Try CORS proxy as fallback
+    try {
+      const url = `https://www.reddit.com/search.json?q=${encodeURIComponent(query)}&sort=new&limit=25&type=link`;
+      const proxyUrl = CORS_PROXY + encodeURIComponent(url);
+      const resp = await fetch(proxyUrl, { signal: AbortSignal.timeout(10000) });
+      const json = await resp.json();
+      const posts = json?.data?.children || [];
+      return posts.map(p => {
+        const d = p.data;
+        return {
+          id: 'reddit_' + d.id,
+          type: 'reddit',
+          title: d.title,
+          url: d.url || `https://reddit.com${d.permalink}`,
+          snippet: (d.selftext || '').slice(0, 250) || `r/${d.subreddit} Â· ${d.score} upvotes`,
+          source: `r/${d.subreddit}`,
+          date: new Date(d.created_utc * 1000).toISOString(),
+          dateDisplay: formatDate(new Date(d.created_utc * 1000)),
+          sub: d.subreddit,
+          author: d.author,
+          redditLink: `https://reddit.com${d.permalink}`,
+        };
+      });
+    } catch(e2) {
+      return [];
+    }
+  }
+}
+
+// ââ FETCH YOUTUBE ââ
+async function fetchYouTube(query, apiKey) {
+  try {
+    const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&maxResults=15&order=date&type=video&key=${apiKey}`;
+    const resp = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!resp.ok) { const err = await resp.json(); throw new Error(err.error?.message || 'YouTube API error'); }
+    const json = await resp.json();
+    return (json.items || []).map(item => ({
+      id: 'yt_' + item.id.videoId,
+      type: 'youtube',
+      title: item.snippet.title,
+      url: `https://www.youtube.com/watch?v=${item.id.videoId}`,
+      snippet: item.snippet.description?.slice(0, 250) || '',
+      source: item.snippet.channelTitle,
+      date: item.snippet.publishedAt,
+      dateDisplay: formatDate(new Date(item.snippet.publishedAt)),
+      thumbnail: item.snippet.thumbnails?.default?.url,
+      sub: null,
+    }));
+  } catch(e) {
+    console.warn('YouTube error:', e.message);
+    return [];
+  }
+}
+
+// ââ RENDER RESULTS ââ
+function renderResults() {
+  const area = document.getElementById('results-area');
+  let items = allResults;
+
+  if (activeTab !== 'all') {
+    items = allResults.filter(r => r.type === activeTab);
+  }
+
+  if (items.length === 0) {
+    const hasSearch = searchQuery.length > 0;
+    area.innerHTML = `
+      <div class="results-status">
+        <div class="big-icon">${hasSearch ? 'ð¶' : 'ð'}|/div>
+        <p>${hasSearch ? 'No results found for this combination' : 'Enter a name and topic above to start'}</p>
+        <small>${hasSearch ? 'Try different keywords or a broader topic' : 'Searches live news and public discussions'}</small>
+      </div>`;
+    return;
+  }
+
+  const pinnedIds = new Set(pinnedItems.map(p => p.id));
+
+  let html = '';
+  if (items.length > 0 && searchQuery) {
+    html += `<div class="limit-notice">
+      â ï¸ <strong>Coverage note:</strong> Results include Google News (all major outlets) and Reddit.
+      Twitter/X, Facebook, and Instagram require paid API subscriptions and are not included.
+      ${!document.getElementById('yt-api-key').value ? ' Add a free YouTube API key above to include video results.' : ''}
+    </div>`;
+  }
+
+  items.forEach(item => {
+    const isPinned = pinnedIds.has(item.id);
+    const badgeClass = { news: 'badge-news', reddit: 'badge-reddit', youtube: 'badge-youtube' }[item.type];
+    const badgeLabel = { news: 'ð° News', reddit: 'ð¬ Reddit', youtube: 'â¶ï¸ YouTube' }[item.type];
+    const openUrl = item.type === 'reddit' ? (item.redditLink || item.url) : item.url;
+
+    html += `<div class="result-card" id="card-${item.id}">
+      <div class="card-top">
+        <span class="source-badge ${badgeClass}">${badgeLabel}</span>
+        <div class="card-meta">
+          <div class="card-source-name">${escHtml(item.source)}${item.author ? ` Â· u/${escHtml(item.author)}` : ''}${item.sub && item.type==='reddit' ? ` <span class="subreddit-tag">r/${escHtml(item.sub)}</span>` : ''}</div>
+          <div class="card-date">${item.dateDisplay}</div>
+        </div>
+      </div>
+      <div class="card-title">${escHtml(item.title)}</div>
+      ${item.snippet ? `<div class="card-snippet">${escHtml(item.snippet)}</div>` : ''}
+      <div class="card-actions">
+        <a class="btn-link" href="${escHtml(openUrl)}" target="_blank" rel="noopener">Open Source â</a>
+        ${item.type === 'reddit' && item.url !== item.redditLink ? `<a class="btn-link" href="${escHtml(item.url)}" target="_blank" rel="noopener" style="max-width:120px;">Linked Article â</a>` : ''}
+        <button class="btn-pin ${isPinned ? 'pinned' : ''}" onclick="togglePin('${item.id}')">${isPinned ? 'ð Pinned' : 'ð Pin'}</button>
+      </div>
+    </div>`;
+  });
+
+  area.innerHTML = html;
+}
+
+// ââ PIN / UNPIN ââ
+function togglePin(id) {
+  const item = allResults.find(r => r.id === id);
+  if (!item) return;
+  const idx = pinnedItems.findIndex(p => p.id === id);
+  if (idx === -1) {
+    pinnedItems.unshift({ ...item, note: '', pinnedAt: new Date().toLocaleString() });
+    // Update card button
+    const btn = document.querySelector(`#card-${id} .btn-pin`);
+    if (btn) { btn.textContent = 'ð Pinned'; btn.classList.add('pinned'); }
+  } else {
+    pinnedItems.splice(idx, 1);
+    const btn = document.querySelector(`#card-${id} .btn-pin`);
+    if (btn) { btn.textContent = 'ð Pin'; btn.classList.remove('pinned'); }
+  }
+  renderBoard();
+}
+
+function renderBoard() {
+  const area = document.getElementById('board-items');
+  if (pinnedItems.length === 0) {
+    area.innerHTML = `<div class="board-empty"><div class="icon">ð</div><p>Pin results from your search<br>to build an opposition file</p></div>`;
+    return;
+  }
+
+  area.innerHTML = pinnedItems.map((item, idx) => {
+    const badgeLabel = { news: 'ð°', reddit: 'ð¬', youtube: 'â¶ï¸' }[item.type] || 'ð';
+    const openUrl = item.type === 'reddit' ? (item.redditLink || item.url) : item.url;
+    return `<div class="pinned-item" id="pinned-${item.id}">
+      <div class="pinned-top">
+        <div class="pinned-title">${badgeLabel} ${escHtml(item.title)}</div>
+        <button class="btn-unpin" onclick="unpinItem(${idx})" title="Remove">â</button>
+      </div>
+      <div class="pinned-meta">${escHtml(item.source)} Â· ${item.dateDisplay}</div>
+      ${item.snippet ? `<div class="pinned-snippet">${escHtml(item.snippet)}</div>` : ''}
+      <textarea class="pinned-note" rows="2" placeholder="Add notes, context, or talking points..."
+        onchange="updateNote(${idx}, this.value)">${escHtml(item.note || '')}</textarea>
+      <div>
+        <a class="pinned-link" href="${escHtml(openUrl)}" target="_blank" rel="noopener">Open source â</a>
+        <span class="pinned-date-added">Pinned ${item.pinnedAt}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function unpinItem(idx) {
+  const id = pinnedItems[idx]?.id;
+  pinnedItems.splice(idx, 1);
+  // Update card button if visible
+  if (id) {
+    const btn = document.querySelector(`#card-${id} .btn-pin`);
+    if (btn) { btn.textContent = 'ð Pin'; btn.classList.remove('pinned'); }
+  }
+  renderBoard();
+}
+
+function updateNote(idx, val) {
+  if (pinnedItems[idx]) pinnedItems[idx].note = val;
+}
+
+function clearBoard() {
+  if (pinnedItems.length === 0) return;
+  if (!confirm('Clear all pinned items? This cannot be undone.')) return;
+  pinnedItems = [];
+  renderBoard();
+  renderResults(); // reset pin states
+}
+
+// ââ EXPORT ââ
+function exportBoard() {
+  if (pinnedItems.length === 0) { alert('No items pinned yet.'); return; }
+  const subject = document.getElementById('subject-input').value || 'Opposition Research File';
+  const date = new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
+  let text = `${subject.toUpperCase()}\nGenerated: ${date}\nSearch: "${searchQuery}"\n\n${'='.repeat(60)}\n\n`;
+  pinnedItems.forEach((item, i) => {
+    const typeLabel = { news: 'NEWS ARTICLE', reddit: 'REDDIT DISCUSSION', youtube: 'YOUTUBE VIDEO' }[item.type] || 'SOURCE';
+    text += `[${i+1}] ${typeLabel}\n`;
+    text += `Title:  ${item.title}\n`;
+    text += `Source: ${item.source}\n`;
+    text += `Date:   ${item.dateDisplay}\n`;
+    text += `URL:    ${item.type==='reddit'?(item.redditLink||item.url):item.url}\n`;
+    if (item.snippet) text += `Summary: ${item.snippet}\n`;
+    if (item.note) text += `\nNOTES:\n${item.note}\n`;
+    text += `\n${'-'.repeat(60)}\n\n`;
+  });
+  const blob = new Blob([text], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = subject.replace(/[^a-z0-9]/gi, '_').toLowerCase() + '_research.txt';
+  a.click();
+}
+
+// ââ COUNTS ââ
+function updateCounts() {
+  const types = ['news', 'reddit', 'youtube'];
+  const total = allResults.length;
+  document.getElementById('count-all').textContent = total;
+  types.forEach(t => {
+    document.getElementById('count-' + t).textContent = allResults.filter(r => r.type === t).length;
+  });
+}
+
+// ââ UTILS ââ
+function escHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function formatDate(d) {
+  if (!(d instanceof Date) || isNaN(d)) return 'Unknown date';
+  const now = new Date();
+  const diff = (now - d) / 1000;
+  if (diff < 3600) return `${Math.floor(diff/60)} minutes ago`;
+  if (diff < 86400) return `${Math.floor(diff/3600)} hours ago`;
+  if (diff < 86400*7) return `${Math.floor(diff/86400)} days ago`;
+  return d.toLocaleDateString('en-US', { year:'numeric', month:'short', day:'numeric' });
+}
+
+function extractDomain(url) {
+  try { return new URL(url).hostname.replace('www.',''); } catch { return 'Unknown source'; }
+}
+
+// ââ ENTER KEY SUPPORT ââ
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && (document.activeElement.id === 'input-person' || document.activeElement.id === 'input-topic')) {
+    runSearch();
+  }
+});
+</script>
+</body>
+</html>
