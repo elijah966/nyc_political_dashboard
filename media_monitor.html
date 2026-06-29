@@ -248,7 +248,7 @@ body{overflow-x:hidden;}
   </div>
   <div class="header-spacer"></div>
   <div class="source-note">
-    Sources: The Guardian · Hacker News<br>
+    Sources: The Guardian Â· Hacker News<br>
     Twitter/Facebook require paid API access
   </div>
 </header>
@@ -270,7 +270,7 @@ body{overflow-x:hidden;}
         <span class="filter-label">Sources:</span>
         <button class="filter-btn active" data-src="all" onclick="setSource(this)">All</button>
         <button class="filter-btn" data-src="news" onclick="setSource(this)">ð° News</button>
-        <button class="filter-btn" data-src="reddit" onclick="setSource(this)">ð¬ Reddit</button>
+        <button class="filter-btn" data-src="reddit" onclick="setSource(this)">ð¬ Hacker News</button>
         <button class="filter-btn" data-src="youtube" onclick="setSource(this, true)">â¶ï¸ YouTube</button>
         <span style="flex:1"></span>
         <span class="filter-label">Sort:</span>
@@ -278,7 +278,7 @@ body{overflow-x:hidden;}
         <button class="filter-btn" data-sort="relevant" onclick="setSort(this)">Relevant</button>
       </div>
       <div class="yt-key-row" id="yt-key-row">
-        <span style="font-size:11px;color:var(--muted);white-space:nowrap;">YouTube API Key;</span>
+        <span style="font-size:11px;color:var(--muted);white-space:nowrap;">YouTube API Key:</span>
         <input class="yt-key-input" id="yt-api-key" placeholder="Paste your free Google API key here (optional)"/>
         <a href="https://console.developers.google.com/" target="_blank" style="font-size:10px;color:#60A5FA;white-space:nowrap;">Get free key â</a>
       </div>
@@ -337,8 +337,6 @@ let activeSort = 'recent';
 let searchQuery = '';
 let isSearching = false;
 
-const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
-
 // ââ SOURCE FILTER ââ
 function setSource(btn, showYT) {
   document.querySelectorAll('.filter-btn[data-src]').forEach(b => b.classList.remove('active'));
@@ -369,7 +367,7 @@ async function runSearch() {
   if (isSearching) return;
 
   isSearching = true;
-  const btn = document.getElementById('search-btn');
+  const btn = document.getElementById('searchbtn');
   btn.disabled = true;
   btn.textContent = 'Searching...';
   allResults = [];
@@ -407,20 +405,26 @@ async function runSearch() {
   renderResults();
 }
 
-// ââ FETCH NEWS (Google News RSS via CORS proxy) ââ
+// ââ FETCH NEWS (The Guardian API â free "test" key, full CORS support) ââ
 async function fetchNews(query) {
-  // Guardian API — free "test" key, full CORS support, all major news
   try {
-    const url = `https://content.guardianapis.com/search?q=${encodeURIComponent(query)}&api-key=test&show-fields=trailText,byline&page-size=30&order-by=newest`;
-    const resp = await fetch(url, { signal: AbortSignal.timeout(12000) });
-    if (!resp.ok) throw new Error('guardian error ' + resp.status);
+    const base = 'https://content.guardianapis.com/search';
+    const params = new URLSearchParams({
+      q: query,
+      'api-key': 'test',
+      'show-fields': 'trailText,byline',
+      'page-size': '30',
+      'order-by': 'newest',
+    });
+    const resp = await fetch(base + '?' + params.toString(), { signal: AbortSignal.timeout(12000) });
+    if (!resp.ok) throw new Error('Guardian error ' + resp.status);
     const json = await resp.json();
-    return (json?.response?.results || []).map(item => ({
-      id: 'news_' + item.id.replace(///g,'_'),
+    return (json.response?.results || []).map(item => ({
+      id: 'news_' + item.id.replace(/\//g, '_'),
       type: 'news',
       title: item.webTitle,
       url: item.webUrl,
-      snippet: item.fields?.trailText?.replace(/<[^>]+>/g,' ').trim().slice(0,250) || '',
+      snippet: (item.fields?.trailText || '').replace(/<[^>]+>/g, ' ').trim().slice(0, 250),
       source: 'The Guardian',
       date: item.webPublicationDate || new Date().toISOString(),
       dateDisplay: formatDate(new Date(item.webPublicationDate)),
@@ -432,25 +436,31 @@ async function fetchNews(query) {
   }
 }
 
-// ── FETCH HACKERNEWS (public discussion — no key needed) ──
+// ââ FETCH HACKER NEWS (Algolia API â no key, full CORS support) ââ
 async function fetchReddit(query) {
   try {
-    const url = `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(query)}&tags=story&hitsPerPage=25`;
-    const resp = await fetch(url, { signal: AbortSignal.timeout(10000) });
-    if (!resp.ok) throw new Error('HN error');
+    const base = 'https://hn.algolia.com/api/v1/search';
+    const params = new URLSearchParams({
+      query: query,
+      tags: 'story',
+      hitsPerPage: '25',
+    });
+    const resp = await fetch(base + '?' + params.toString(), { signal: AbortSignal.timeout(10000) });
+    if (!resp.ok) throw new Error('HN error ' + resp.status);
     const json = await resp.json();
-    return (json?.hits || []).filter(h => h.title).map(h => ({
+    return (json.hits || []).filter(h => h.title).map(h => ({
       id: 'hn_' + h.objectID,
       type: 'reddit',
       title: h.title,
-      url: h.url || `https://news.ycombinator.com/item?id=${h.objectID}`,
-      snippet: (h.story_text || '').replace(/<[^>]+>/g,' ').trim().slice(0,250) || `${h.points||0} points · ${h.num_comments||0} comments on Hacker News`,
+      url: h.url || ('https://news.ycombinator.com/item?id=' + h.objectID),
+      snippet: (h.story_text || '').replace(/<[^>]+>/g, ' ').trim().slice(0, 250)
+        || ((h.points || 0) + ' points Â· ' + (h.num_comments || 0) + ' comments on Hacker News'),
       source: 'Hacker News',
       date: h.created_at || new Date().toISOString(),
       dateDisplay: formatDate(new Date(h.created_at)),
       sub: null,
       author: h.author,
-      redditLink: `https://news.ycombinator.com/item?id=${h.objectID}`,
+      redditLink: 'https://news.ycombinator.com/item?id=' + h.objectID,
     }));
   } catch(e) {
     console.warn('HN fetch error:', e);
@@ -458,7 +468,32 @@ async function fetchReddit(query) {
   }
 }
 
-// ── FETCH YOUTUBE (optional — paste free Google API key) ──
+// ââ FETCH YOUTUBE ââ
+async function fetchYouTube(query, apiKey) {
+  try {
+    const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&maxResults=15&order=date&type=video&key=${apiKey}`;
+    const resp = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!resp.ok) { const err = await resp.json(); throw new Error(err.error?.message || 'YouTube API error'); }
+    const json = await resp.json();
+    return (json.items || []).map(item => ({
+      id: 'yt_' + item.id.videoId,
+      type: 'youtube',
+      title: item.snippet.title,
+      url: `https://www.youtube.com/watch?v=${item.id.videoId}`,
+      snippet: item.snippet.description?.slice(0, 250) || '',
+      source: item.snippet.channelTitle,
+      date: item.snippet.publishedAt,
+      dateDisplay: formatDate(new Date(item.snippet.publishedAt)),
+      thumbnail: item.snippet.thumbnails?.default?.url,
+      sub: null,
+    }));
+  } catch(e) {
+    console.warn('YouTube error:', e.message);
+    return [];
+  }
+}
+
+// ââ RENDER RESULTS ââ
 function renderResults() {
   const area = document.getElementById('results-area');
   let items = allResults;
@@ -471,7 +506,7 @@ function renderResults() {
     const hasSearch = searchQuery.length > 0;
     area.innerHTML = `
       <div class="results-status">
-        <div class="big-icon">${hasSearch ? 'ð¶' : 'ð'}|/div>
+        <div class="big-icon">${hasSearch ? 'ð¶' : 'ð'}</div>
         <p>${hasSearch ? 'No results found for this combination' : 'Enter a name and topic above to start'}</p>
         <small>${hasSearch ? 'Try different keywords or a broader topic' : 'Searches live news and public discussions'}</small>
       </div>`;
@@ -591,7 +626,7 @@ function exportBoard() {
   const date = new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
   let text = `${subject.toUpperCase()}\nGenerated: ${date}\nSearch: "${searchQuery}"\n\n${'='.repeat(60)}\n\n`;
   pinnedItems.forEach((item, i) => {
-    const typeLabel = { news: 'NEWS ARTICLE', reddit: 'REDDIT DISCUSSION', youtube: 'YOUTUBE VIDEO' }[item.type] || 'SOURCE';
+    const typeLabel = { news: 'NEWS ARTICLE', reddit: 'HACKER NEWS DISCUSSION', youtube: 'YOUTUBE VIDEO' }[item.type] || 'SOURCE';
     text += `[${i+1}] ${typeLabel}\n`;
     text += `Title:  ${item.title}\n`;
     text += `Source: ${item.source}\n`;
