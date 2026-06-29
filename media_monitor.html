@@ -248,7 +248,7 @@ body{overflow-x:hidden;}
   </div>
   <div class="header-spacer"></div>
   <div class="source-note">
-    Sources: Google News Â· Reddit<br>
+    Sources: The Guardian · Hacker News<br>
     Twitter/Facebook require paid API access
   </div>
 </header>
@@ -288,7 +288,7 @@ body{overflow-x:hidden;}
     <div id="source-tabs">
       <button class="src-tab active" data-tab="all" onclick="switchTab(this)">All Results <span class="tab-count" id="count-all">0</span></button>
       <button class="src-tab" data-tab="news" onclick="switchTab(this)">News <span class="tab-count" id="count-news">0</span></button>
-      <button class="src-tab" data-tab="reddit" onclick="switchTab(this)">Reddit <span class="tab-count" id="count-reddit">0</span></button>
+      <button class="src-tab" data-tab="reddit" onclick="switchTab(this)">Hacker News <span class="tab-count" id="count-reddit">0</span></button>
       <button class="src-tab" data-tab="youtube" onclick="switchTab(this)">YouTube <span class="tab-count" id="count-youtube">0</span></button>
     </div>
 
@@ -409,125 +409,56 @@ async function runSearch() {
 
 // ââ FETCH NEWS (Google News RSS via CORS proxy) ââ
 async function fetchNews(query) {
+  // Guardian API — free "test" key, full CORS support, all major news
   try {
-    const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=en-US&gl=US&ceid=US:en`;
-    const proxyUrl = CORS_PROXY + encodeURIComponent(rssUrl);
-    const resp = await fetch(proxyUrl, { signal: AbortSignal.timeout(12000) });
-    if (!resp.ok) throw new Error('proxy error');
-    const text = await resp.text();
-    const parser = new DOMParser();
-    const xml = parser.parseFromString(text, 'text/xml');
-    const items = [...xml.querySelectorAll('item')].slice(0, 30);
-    return items.map(item => {
-      const title = item.querySelector('title')?.textContent || '';
-      const link = item.querySelector('link')?.textContent || item.querySelector('link')?.getAttribute('href') || '';
-      const desc = item.querySelector('description')?.textContent || '';
-      const pubDate = item.querySelector('pubDate')?.textContent || '';
-      const source = item.querySelector('source')?.textContent || extractDomain(link);
-      // Strip HTML from description
-      const cleanDesc = desc.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 250);
-      return {
-        id: 'news_' + Math.random().toString(36).slice(2),
-        type: 'news',
-        title: title.replace(/\s*-\s*[^-]+$/, '').trim(),
-        url: link,
-        snippet: cleanDesc,
-        source,
-        date: pubDate ? new Date(pubDate).toISOString() : new Date().toISOString(),
-        dateDisplay: pubDate ? formatDate(new Date(pubDate)) : 'Unknown date',
-        sub: null,
-      };
-    }).filter(r => r.title && r.url);
+    const url = `https://content.guardianapis.com/search?q=${encodeURIComponent(query)}&api-key=test&show-fields=trailText,byline&page-size=30&order-by=newest`;
+    const resp = await fetch(url, { signal: AbortSignal.timeout(12000) });
+    if (!resp.ok) throw new Error('guardian error ' + resp.status);
+    const json = await resp.json();
+    return (json?.response?.results || []).map(item => ({
+      id: 'news_' + item.id.replace(///g,'_'),
+      type: 'news',
+      title: item.webTitle,
+      url: item.webUrl,
+      snippet: item.fields?.trailText?.replace(/<[^>]+>/g,' ').trim().slice(0,250) || '',
+      source: 'The Guardian',
+      date: item.webPublicationDate || new Date().toISOString(),
+      dateDisplay: formatDate(new Date(item.webPublicationDate)),
+      sub: null,
+    }));
   } catch(e) {
     console.warn('News fetch error:', e);
     return [];
   }
 }
 
-// ââ FETCH REDDIT ââ
+// ── FETCH HACKERNEWS (public discussion — no key needed) ──
 async function fetchReddit(query) {
   try {
-    const url = `https://www.reddit.com/search.json?q=${encodeURIComponent(query)}&sort=new&limit=30&type=link&t=year`;
-    const resp = await fetch(url, {
-      headers: { 'Accept': 'application/json' },
-      signal: AbortSignal.timeout(10000)
-    });
-    if (!resp.ok) throw new Error('reddit error');
-    const json = await resp.json();
-    const posts = json?.data?.children || [];
-    return posts.map(p => {
-      const d = p.data;
-      return {
-        id: 'reddit_' + d.id,
-        type: 'reddit',
-        title: d.title,
-        url: d.url || `https://reddit.com${d.permalink}`,
-        snippet: (d.selftext || '').slice(0, 250) || `Posted in r/${d.subreddit} Â· ${d.score} upvotes Â· ${d.num_comments} comments`,
-        source: `r/${d.subreddit}`,
-        date: new Date(d.created_utc * 1000).toISOString(),
-        dateDisplay: formatDate(new Date(d.created_utc * 1000)),
-        sub: d.subreddit,
-        author: d.author,
-        redditLink: `https://reddit.com${d.permalink}`,
-      };
-    });
-  } catch(e) {
-    console.warn('Reddit fetch error:', e);
-    // Try CORS proxy as fallback
-    try {
-      const url = `https://www.reddit.com/search.json?q=${encodeURIComponent(query)}&sort=new&limit=25&type=link`;
-      const proxyUrl = CORS_PROXY + encodeURIComponent(url);
-      const resp = await fetch(proxyUrl, { signal: AbortSignal.timeout(10000) });
-      const json = await resp.json();
-      const posts = json?.data?.children || [];
-      return posts.map(p => {
-        const d = p.data;
-        return {
-          id: 'reddit_' + d.id,
-          type: 'reddit',
-          title: d.title,
-          url: d.url || `https://reddit.com${d.permalink}`,
-          snippet: (d.selftext || '').slice(0, 250) || `r/${d.subreddit} Â· ${d.score} upvotes`,
-          source: `r/${d.subreddit}`,
-          date: new Date(d.created_utc * 1000).toISOString(),
-          dateDisplay: formatDate(new Date(d.created_utc * 1000)),
-          sub: d.subreddit,
-          author: d.author,
-          redditLink: `https://reddit.com${d.permalink}`,
-        };
-      });
-    } catch(e2) {
-      return [];
-    }
-  }
-}
-
-// ââ FETCH YOUTUBE ââ
-async function fetchYouTube(query, apiKey) {
-  try {
-    const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&maxResults=15&order=date&type=video&key=${apiKey}`;
+    const url = `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(query)}&tags=story&hitsPerPage=25`;
     const resp = await fetch(url, { signal: AbortSignal.timeout(10000) });
-    if (!resp.ok) { const err = await resp.json(); throw new Error(err.error?.message || 'YouTube API error'); }
+    if (!resp.ok) throw new Error('HN error');
     const json = await resp.json();
-    return (json.items || []).map(item => ({
-      id: 'yt_' + item.id.videoId,
-      type: 'youtube',
-      title: item.snippet.title,
-      url: `https://www.youtube.com/watch?v=${item.id.videoId}`,
-      snippet: item.snippet.description?.slice(0, 250) || '',
-      source: item.snippet.channelTitle,
-      date: item.snippet.publishedAt,
-      dateDisplay: formatDate(new Date(item.snippet.publishedAt)),
-      thumbnail: item.snippet.thumbnails?.default?.url,
+    return (json?.hits || []).filter(h => h.title).map(h => ({
+      id: 'hn_' + h.objectID,
+      type: 'reddit',
+      title: h.title,
+      url: h.url || `https://news.ycombinator.com/item?id=${h.objectID}`,
+      snippet: (h.story_text || '').replace(/<[^>]+>/g,' ').trim().slice(0,250) || `${h.points||0} points · ${h.num_comments||0} comments on Hacker News`,
+      source: 'Hacker News',
+      date: h.created_at || new Date().toISOString(),
+      dateDisplay: formatDate(new Date(h.created_at)),
       sub: null,
+      author: h.author,
+      redditLink: `https://news.ycombinator.com/item?id=${h.objectID}`,
     }));
   } catch(e) {
-    console.warn('YouTube error:', e.message);
+    console.warn('HN fetch error:', e);
     return [];
   }
 }
 
-// ââ RENDER RESULTS ââ
+// ── FETCH YOUTUBE (optional — paste free Google API key) ──
 function renderResults() {
   const area = document.getElementById('results-area');
   let items = allResults;
@@ -552,7 +483,7 @@ function renderResults() {
   let html = '';
   if (items.length > 0 && searchQuery) {
     html += `<div class="limit-notice">
-      â ï¸ <strong>Coverage note:</strong> Results include Google News (all major outlets) and Reddit.
+      â ï¸ <strong>Coverage note:</strong> Results include The Guardian news and Hacker News discussions.
       Twitter/X, Facebook, and Instagram require paid API subscriptions and are not included.
       ${!document.getElementById('yt-api-key').value ? ' Add a free YouTube API key above to include video results.' : ''}
     </div>`;
